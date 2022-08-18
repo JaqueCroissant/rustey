@@ -198,7 +198,6 @@ fn can_parse_simple_program() {
 
     for expected in expected_results {
         let actual = sut.next_token();
-        println!("{:?}", actual);
         assert_eq!(actual, expected);
     }
 }
