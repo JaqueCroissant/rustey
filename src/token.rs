@@ -19,5 +19,12 @@ pub enum Token{
     LessThan,
     GreaterThan,
     Function,
-    Let
+    Let,
+    True,
+    False,
+    If,
+    Else,
+    Return,
+    Equals,
+    NotEqual
 }

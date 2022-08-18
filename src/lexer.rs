@@ -33,7 +33,8 @@ impl Lexer{
         let result = match self.current_char.unwrap() {
             x if self.is_identifier(x) => return self.read_identifier(),
             x if x.is_numeric() => return self.read_integer(),
-            '=' => Token::Assign,
+            '=' => self.assign_or_equals(),
+            '!' => self.bang_or_not_equal(),
             '+' => Token::Plus,
             '-' => Token::Minus,
             '(' => Token::LeftParentheses,
@@ -42,7 +43,6 @@ impl Lexer{
             '}' => Token::RightBrace,
             ',' => Token::Comma,
             ';' => Token::Semicolon,
-            '!' => Token::Bang,
             '*' => Token::Asterisk,
             '/' => Token::Slash,
             '<' => Token::LessThan,
@@ -55,6 +55,30 @@ impl Lexer{
         result
     }
 
+    fn assign_or_equals(&mut self) -> Token {
+        let peek = self.peek_char();
+                
+        if peek != None && peek.unwrap() == '=' {
+            self.read_char();
+            return Token::Equals
+        }
+        else{
+            return Token::Assign;
+        }
+    }
+
+    fn bang_or_not_equal(&mut self) -> Token {
+        let peek = self.peek_char();
+                
+        if peek != None && peek.unwrap() == '=' {
+            self.read_char();
+            return Token::NotEqual
+        }
+        else{
+            return Token::Bang;
+        }
+    }
+
     fn read_char(&mut self) {
         if self.read_position > self.input.len() {
             self.current_char = None;
@@ -63,6 +87,15 @@ impl Lexer{
             self.current_char = self.input.chars().nth(self.read_position);
             self.position = self.read_position;
             self.read_position += 1;
+        }
+    }
+
+    fn peek_char(&mut self) -> Option<char> {
+        if self.read_position > self.input.len() {
+            return None;
+        }
+        else{
+            return self.input.chars().nth(self.read_position);
         }
     }
 
@@ -91,6 +124,11 @@ impl Lexer{
         let token = match x {
             "fn" => Token::Function,
             "let" => Token::Let,
+            "true" => Token::True,
+            "false" => Token::False,
+            "if" => Token::If,
+            "else" => Token::Else,
+            "return" => Token::Return,
             _ => Token::Identifier(x.to_string()),
         };
 
@@ -159,6 +197,15 @@ fn can_parse_simple_program() {
     let result = add(five, ten);
     !-/*5;
     5 < 10 > 5;
+
+    if (5 < 10) {
+        return true;
+    } else {
+        return false;
+    }
+
+    10 == 10;
+    10 != 9;
     ";
 
     let input = String::from(program);
@@ -212,6 +259,31 @@ fn can_parse_simple_program() {
         Token::Integer(10),
         Token::GreaterThan,
         Token::Integer(5),
+        Token::Semicolon,
+        Token::If,
+        Token::LeftParentheses,
+        Token::Integer(5),
+        Token::LessThan,
+        Token::Integer(10),
+        Token::RightParentheses,
+        Token::LeftBrace,
+        Token::Return,
+        Token::True,
+        Token::Semicolon,
+        Token::RightBrace,
+        Token::Else,
+        Token::LeftBrace,
+        Token::Return,
+        Token::False,
+        Token::Semicolon,
+        Token::RightBrace,
+        Token::Integer(10),
+        Token::Equals,
+        Token::Integer(10),
+        Token::Semicolon,
+        Token::Integer(10),
+        Token::NotEqual,
+        Token::Integer(9),
         Token::Semicolon,
         Token::EndOfFile
         ];
