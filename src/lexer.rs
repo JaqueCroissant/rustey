@@ -1,4 +1,5 @@
 use std::char;
+use std::str::FromStr;
 use super::token::Token;
 
 pub struct Lexer{
@@ -10,16 +11,19 @@ pub struct Lexer{
 
 impl Lexer{
     pub fn new (input: String) -> Lexer {
-        Lexer { 
+        let mut lexer = Lexer { 
             input: input, 
             position: 0, 
             read_position: 0, 
             current_char: None
-        }
+        };
+
+        lexer.read_char();
+
+        return lexer;
     }
     
     pub fn next_token(&mut self) -> Token {
-        self.read_char();
         self.skip_whitespace();
 
         if self.current_char == None {
@@ -27,6 +31,8 @@ impl Lexer{
         }
 
         let result = match self.current_char.unwrap() {
+            x if self.is_identifier(x) => return self.read_identifier(),
+            x if x.is_numeric() => return self.read_integer(),
             '=' => Token::Assign,
             '+' => Token::Plus,
             '(' => Token::LeftParentheses,
@@ -34,15 +40,17 @@ impl Lexer{
             '{' => Token::LeftBrace,
             '}' => Token::RightBrace,
             ',' => Token::Comma,
-            ';' => Token::Semicolon, 
+            ';' => Token::Semicolon,
             _ => Token::Illegal
         };
+
+        self.read_char();
 
         result
     }
 
     fn read_char(&mut self) {
-        if self.read_position >= self.input.len() {
+        if self.read_position > self.input.len() {
             self.current_char = None;
         }
         else{
@@ -54,11 +62,7 @@ impl Lexer{
 
     fn skip_whitespace(&mut self) {
 
-        if self.current_char == None {
-            return;
-        }
-
-        loop {
+        while self.current_char != None{
             match self.current_char.unwrap() {
                   ' ' 
                 | '\t' 
@@ -68,6 +72,44 @@ impl Lexer{
             }
         }
     }
+
+    fn read_identifier(&mut self) -> Token
+    {
+        let start = self.position;
+
+        while self.current_char != None && self.is_identifier(self.current_char.unwrap()) {
+            self.read_char();
+        }
+
+        let x = &self.input[start..self.position];
+        let token = match x {
+            "fn" => Token::Function,
+            "let" => Token::Let,
+            _ => Token::Identifier(x.to_string()),
+        };
+
+        token
+    }
+
+    fn read_integer(&mut self) -> Token
+    {
+        let start = self.position;
+
+        while self.current_char != None && self.current_char.unwrap().is_numeric() {
+            self.read_char();
+        }
+
+        let num: i32 = FromStr::from_str(&self.input[start..self.position]).unwrap();
+        Token::Integer(num)
+    }
+
+    fn is_identifier(&mut self, input: char) -> bool {
+        match input {
+            'a'..='z' | 'A'..='Z' | '_' => true,
+            _ => false
+        }
+    }
+
 }
 
 #[cfg(test)]
@@ -156,6 +198,7 @@ fn can_parse_simple_program() {
 
     for expected in expected_results {
         let actual = sut.next_token();
+        println!("{:?}", actual);
         assert_eq!(actual, expected);
     }
 }
