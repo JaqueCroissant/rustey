@@ -160,7 +160,7 @@ impl Lexer{
 #[test]
 fn can_parse_string() {
 
-    let input = String::from("=+(){},;^");
+    let input = "=+(){},;^".to_string();
 
     let mut sut = Lexer::new(input);
 
@@ -186,7 +186,7 @@ fn can_parse_string() {
 #[test]
 fn can_parse_simple_program() {
 
-    let program = 
+    let input = 
     "let five = 5;
     let ten = 10;
     
@@ -206,9 +206,8 @@ fn can_parse_simple_program() {
 
     10 == 10;
     10 != 9;
-    ";
+    ".to_string();
 
-    let input = String::from(program);
     let mut sut = Lexer::new(input);
 
     let expected_results = [
