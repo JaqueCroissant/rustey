@@ -6,12 +6,18 @@ pub enum Token{
     Integer(i32),
     Assign,
     Plus,
+    Minus,
     Comma,
     Semicolon,
     LeftParentheses,
     RightParentheses,
     LeftBrace,
     RightBrace,
+    Bang,
+    Asterisk,
+    Slash,
+    LessThan,
+    GreaterThan,
     Function,
     Let
 }

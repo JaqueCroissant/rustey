@@ -35,12 +35,18 @@ impl Lexer{
             x if x.is_numeric() => return self.read_integer(),
             '=' => Token::Assign,
             '+' => Token::Plus,
+            '-' => Token::Minus,
             '(' => Token::LeftParentheses,
             ')' => Token::RightParentheses,
             '{' => Token::LeftBrace,
             '}' => Token::RightBrace,
             ',' => Token::Comma,
             ';' => Token::Semicolon,
+            '!' => Token::Bang,
+            '*' => Token::Asterisk,
+            '/' => Token::Slash,
+            '<' => Token::LessThan,
+            '>' => Token::GreaterThan,
             _ => Token::Illegal
         };
 
@@ -151,6 +157,8 @@ fn can_parse_simple_program() {
     };
     
     let result = add(five, ten);
+    !-/*5;
+    5 < 10 > 5;
     ";
 
     let input = String::from(program);
@@ -192,6 +200,18 @@ fn can_parse_simple_program() {
         Token::Comma,
         Token::Identifier(String::from("ten")),
         Token::RightParentheses,
+        Token::Semicolon,
+        Token::Bang,
+        Token::Minus,
+        Token::Slash,
+        Token::Asterisk,
+        Token::Integer(5),
+        Token::Semicolon,
+        Token::Integer(5),
+        Token::LessThan,
+        Token::Integer(10),
+        Token::GreaterThan,
+        Token::Integer(5),
         Token::Semicolon,
         Token::EndOfFile
         ];
