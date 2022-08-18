@@ -1,5 +1,4 @@
 use std::char;
-
 use super::token::Token;
 
 pub struct Lexer{
@@ -19,7 +18,7 @@ impl Lexer{
         }
     }
     
-    pub fn next_token(&mut self) -> Token{
+    pub fn next_token(&mut self) -> Token {
         self.read_char();
         self.skip_whitespace();
 
@@ -61,7 +60,10 @@ impl Lexer{
 
         loop {
             match self.current_char.unwrap() {
-                ' ' | '\t' | '\n' | '\r' => self.read_char(),
+                  ' ' 
+                | '\t' 
+                | '\n' 
+                | '\r' => self.read_char(),
                 _ => break,
             }
         }
@@ -70,7 +72,7 @@ impl Lexer{
 
 #[cfg(test)]
 #[test]
-fn next_token_works() {
+fn can_parse_string() {
 
     let input = String::from("=+(){},;^");
 
@@ -91,7 +93,69 @@ fn next_token_works() {
 
     for expected in expected_results {
         let actual = sut.next_token();
+        assert_eq!(actual, expected);
+    }
+}
 
+#[test]
+fn can_parse_simple_program() {
+
+    let program = 
+    "let five = 5;
+    let ten = 10;
+    
+    let add = fn(x, y) {
+        x + y;
+    };
+    
+    let result = add(five, ten);
+    ";
+
+    let input = String::from(program);
+    let mut sut = Lexer::new(input);
+
+    let expected_results = [
+        Token::Let, 
+        Token::Identifier(String::from("five")),
+        Token::Assign,
+        Token::Integer(5),
+        Token::Semicolon,
+        Token::Let, 
+        Token::Identifier(String::from("ten")),
+        Token::Assign,
+        Token::Integer(10),
+        Token::Semicolon,
+        Token::Let, 
+        Token::Identifier(String::from("add")),
+        Token::Assign,
+        Token::Function,
+        Token::LeftParentheses,
+        Token::Identifier(String::from("x")),
+        Token::Comma,
+        Token::Identifier(String::from("y")),
+        Token::RightParentheses,
+        Token::LeftBrace,
+        Token::Identifier(String::from("x")),
+        Token::Plus,
+        Token::Identifier(String::from("y")),
+        Token::Semicolon,
+        Token::RightBrace,
+        Token::Semicolon,
+        Token::Let, 
+        Token::Identifier(String::from("result")),
+        Token::Assign,
+        Token::Identifier(String::from("add")),
+        Token::LeftParentheses,
+        Token::Identifier(String::from("five")),
+        Token::Comma,
+        Token::Identifier(String::from("ten")),
+        Token::RightParentheses,
+        Token::Semicolon,
+        Token::EndOfFile
+        ];
+
+    for expected in expected_results {
+        let actual = sut.next_token();
         assert_eq!(actual, expected);
     }
 }
