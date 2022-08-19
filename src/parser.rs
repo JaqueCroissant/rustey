@@ -86,9 +86,14 @@ impl Parser {
             return None;
         };
 
+        // TODO: fuckin fix me
         let value = match &self.current_token { 
             Token::Identifier(x) => x,
             _ => panic!()
+        };
+
+        if !self.expect_peek(&Token::Assign) {
+          return None;
         };
 
         let identifier = Identifier::new(value.to_string());
