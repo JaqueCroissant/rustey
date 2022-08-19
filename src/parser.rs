@@ -86,9 +86,8 @@ impl Parser {
             return None;
         };
 
-        // TODO: fuckin fix me
         let value = match &self.current_token { 
-            Token::Identifier(x) => x,
+            Token::Identifier(x) => x.clone(),
             _ => panic!()
         };
 
