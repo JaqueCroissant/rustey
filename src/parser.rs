@@ -1,9 +1,8 @@
-use std::mem;
 use super::lexer::Lexer;
 use super::token::Token;
 
 
-struct Program {
+pub struct Program {
     pub statements: Vec<Statement>
 }
 
@@ -13,7 +12,7 @@ impl Program {
     }
 }
 
-struct Identifier{
+pub struct Identifier{
     pub token: Token,
     pub value: String    
 }
@@ -25,9 +24,9 @@ impl Identifier {
     }
 }
 
-struct Expression{}
+pub struct Expression{}
 
-struct Statement{
+pub struct Statement{
     pub token: Token,
     pub name: Identifier,
     pub value: Expression
@@ -48,7 +47,8 @@ impl Statement {
 pub struct Parser{
     lexer: Lexer,
     current_token: Token,
-    peek_token: Token
+    peek_token: Token,
+    errors: Vec<String>
 }
 
 impl Parser {
@@ -57,7 +57,8 @@ impl Parser {
         let mut parser = Parser { 
             lexer, 
             current_token: Token::Illegal, 
-            peek_token: Token::Illegal 
+            peek_token: Token::Illegal,
+            errors: vec![] 
         };
 
         parser.next_token();
@@ -67,8 +68,51 @@ impl Parser {
     }
 
     pub fn next_token(&mut self) {
-        mem::swap(&mut self.current_token, &mut self.peek_token);
+        self.current_token = self.peek_token.clone();
         self.peek_token = self.lexer.next_token();
+    }
+
+    fn expect_peek(&mut self, token: &Token) -> bool{
+        if self.peek_token_is(token){
+            self.next_token();
+            return true;
+        }
+        self.peek_error(token);
+        false
+    }
+
+    fn current_token_is(&self, token: &Token) -> bool{
+        self.variant_eq::<Token>(&self.current_token, token)
+    }
+
+    fn peek_token_is(&self, token: &Token) -> bool{
+        self.variant_eq::<Token>(&self.peek_token, token)
+    }
+
+    fn variant_eq<T>(&self, a: &T, b: &T) -> bool {
+        std::mem::discriminant(a) == std::mem::discriminant(b)
+    }
+
+    fn peek_error(&mut self, token: &Token){
+        let message = format!("expected {:?} but got {:?}", token, self.peek_token);
+        self.errors.push(message);
+    }
+
+    pub fn parse_program(&mut self) -> Program {
+        let mut program = Program::new();
+
+        while self.current_token != Token::EndOfFile {
+            let statement = self.parse_statement();
+
+            match statement {
+                Some(x) => program.statements.push(x),
+                None => (),
+            }
+            
+            self.next_token();
+        }
+
+        program
     }
 
     fn parse_statement(&mut self) -> Option<Statement> {
@@ -105,51 +149,16 @@ impl Parser {
         Some(statement)
     }
 
-    fn expect_peek(&mut self, token: &Token) -> bool{
-        if self.peek_token_is(token){
-            self.next_token();
-            return true;
-        }
-        false
-    }
-
-    fn current_token_is(&self, token: &Token) -> bool{
-        self.variant_eq::<Token>(&self.current_token, token)
-    }
-
-    fn peek_token_is(&self, token: &Token) -> bool{
-        self.variant_eq::<Token>(&self.peek_token, token)
-    }
-
-    fn variant_eq<T>(&self, a: &T, b: &T) -> bool {
-        std::mem::discriminant(a) == std::mem::discriminant(b)
-    }
-
-    pub fn parse_program(&mut self) -> Program {
-        let mut program = Program::new();
-
-        while self.current_token != Token::EndOfFile {
-            let statement = self.parse_statement();
-
-            match statement {
-                Some(x) => program.statements.push(x),
-                None => (),
-            }
-            
-            self.next_token();
-        }
-
-        program
-    }
+    
 }
 
 #[cfg(test)]
 #[test]
 fn let_statements() {
     let input = "
-    let x = 5;
+    let dingus = 5;
     let y = 10;
-    let foobar = 838383;
+    let foobar 838383;
     ".to_string();
 
     let lexer = Lexer::new(input);
@@ -158,13 +167,13 @@ fn let_statements() {
     let program = parser.parse_program();
 
     let expected_identifiers = [
-        "x".to_string(), 
-        "y".to_string(), 
-        "foobar".to_string()
+        "dingus".to_string(), 
+        "y".to_string()
     ];
 
-    assert_eq!(program.statements.len(), 3);
-
+    assert_eq!(parser.errors.len(), 1);
+    assert_eq!(program.statements.len(), 2);
+    
     for (i, el) in expected_identifiers.iter().enumerate() {
         let statement = &program.statements[i];
 

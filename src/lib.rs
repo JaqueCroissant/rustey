@@ -3,20 +3,12 @@ mod token;
 mod parser;
 
 use lexer::Lexer;
-use token::Token;
+use parser::Parser;
 
 //this is basically the REPL (Read, Eval, Print, Loop)
 
 pub fn run(input: String){
     let mut lexer = Lexer::new(input);
-
-    loop{
-        let token = lexer.next_token();
-
-        println!("{:?}", token);
-
-        if token == Token::EndOfFile {
-            break;
-        }
-    }
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
 }
