@@ -28,16 +28,26 @@ pub struct Expression{}
 
 pub struct Statement{
     pub token: Token,
-    pub name: Identifier,
-    pub value: Expression
+    pub identifier: Option<Identifier>,
+    pub expression: Option<Expression>
 }
 
 impl Statement {
-    pub fn new(token: Token, identifier: Identifier) -> Statement {
+    pub fn new_identifier(token: Token, identifier: Identifier) -> Statement {
         let statement = Statement { 
             token,
-            name: identifier,
-            value: Expression{}
+            identifier: Some(identifier),
+            expression: None
+          };
+
+        statement
+    }
+
+    pub fn new_expression(token: Token, expression: Expression) -> Statement {
+        let statement = Statement { 
+            token,
+            identifier: None,
+            expression: Some(expression)
           };
 
         statement
@@ -118,6 +128,7 @@ impl Parser {
     fn parse_statement(&mut self) -> Option<Statement> {
         let result = match self.current_token {
             Token::Let => self.parse_let_statement(),
+            Token::Return => self.parse_return_statement(),
             _ => None
         };
 
@@ -140,9 +151,25 @@ impl Parser {
         };
 
         let identifier = Identifier::new(value.to_string());
-        let statement = Statement::new(Token::Let, identifier);
+        let statement = Statement::new_identifier(Token::Let, identifier);
 
         while self.current_token == Token::Semicolon {
+            self.next_token();
+        }
+
+        Some(statement)
+    }
+
+    fn parse_return_statement(&mut self) -> Option<Statement> {
+        
+
+        let expression = Expression{};
+        let statement = Statement::new_expression(Token::Return, expression);
+
+        self.next_token();
+
+
+        while self.current_token != Token::Semicolon {
             self.next_token();
         }
 
@@ -174,10 +201,31 @@ fn let_statements() {
     assert_eq!(parser.errors.len(), 1);
     assert_eq!(program.statements.len(), 2);
     
-    for (i, el) in expected_identifiers.iter().enumerate() {
+    for (i, _el) in expected_identifiers.iter().enumerate() {
         let statement = &program.statements[i];
 
         assert_eq!(statement.token, Token::Let);
-        assert_eq!(statement.name.value, expected_identifiers[i]);
+        assert_eq!(statement.identifier.as_ref().unwrap().value, expected_identifiers[i]);
+    }
+}
+
+#[test]
+fn return_statements() {
+    let input = "
+    return 5;
+    return 10;
+    return 838383;
+    ".to_string();
+
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+
+    let program = parser.parse_program();
+
+    assert_eq!(parser.errors.len(), 0);
+    assert_eq!(program.statements.len(), 3);
+    
+    for s in program.statements {
+        assert_eq!(s.token, Token::Return);
     }
 }
