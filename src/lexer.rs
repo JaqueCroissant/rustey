@@ -1,6 +1,5 @@
 use std::char;
-use std::str::FromStr;
-use super::token::Token;
+use super::token::{Token, Variant};
 
 pub struct Lexer{
     input: String,
@@ -27,7 +26,7 @@ impl Lexer{
         self.skip_whitespace();
 
         if self.current_char == None {
-            return Token::EndOfFile;
+            return Token::new(Variant::EndOfFile);
         }
 
         let result = match self.current_char.unwrap() {
@@ -35,19 +34,19 @@ impl Lexer{
             x if x.is_numeric() => return self.read_integer(),
             '=' => self.assign_or_equals(),
             '!' => self.bang_or_not_equal(),
-            '+' => Token::Plus,
-            '-' => Token::Minus,
-            '(' => Token::LeftParentheses,
-            ')' => Token::RightParentheses,
-            '{' => Token::LeftBrace,
-            '}' => Token::RightBrace,
-            ',' => Token::Comma,
-            ';' => Token::Semicolon,
-            '*' => Token::Asterisk,
-            '/' => Token::Slash,
-            '<' => Token::LessThan,
-            '>' => Token::GreaterThan,
-            _ => Token::Illegal
+            '+' => Token::new(Variant::Plus),
+            '-' => Token::new(Variant::Minus),
+            '(' => Token::new(Variant::LeftParentheses),
+            ')' => Token::new(Variant::RightParentheses),
+            '{' => Token::new(Variant::LeftBrace),
+            '}' => Token::new(Variant::RightBrace),
+            ',' => Token::new(Variant::Comma),
+            ';' => Token::new(Variant::Semicolon),
+            '*' => Token::new(Variant::Asterisk),
+            '/' => Token::new(Variant::Slash),
+            '<' => Token::new(Variant::LessThan),
+            '>' => Token::new(Variant::GreaterThan),
+            _ => Token::new(Variant::Illegal)
         };
 
         self.read_char();
@@ -60,10 +59,10 @@ impl Lexer{
                 
         if peek != None && peek.unwrap() == '=' {
             self.read_char();
-            return Token::Equals
+            return Token::new(Variant::Equals);
         }
         else{
-            return Token::Assign;
+            return Token::new(Variant::Assign);
         }
     }
 
@@ -72,10 +71,10 @@ impl Lexer{
                 
         if peek != None && peek.unwrap() == '=' {
             self.read_char();
-            return Token::NotEqual
+            return Token::new(Variant::NotEqual);
         }
         else{
-            return Token::Bang;
+            return Token::new(Variant::Bang);
         }
     }
 
@@ -122,14 +121,14 @@ impl Lexer{
 
         let x = &self.input[start..self.position];
         let token = match x {
-            "fn" => Token::Function,
-            "let" => Token::Let,
-            "true" => Token::True,
-            "false" => Token::False,
-            "if" => Token::If,
-            "else" => Token::Else,
-            "return" => Token::Return,
-            _ => Token::Identifier(x.to_string()),
+            "fn" => Token::new(Variant::Function),
+            "let" => Token::new(Variant::Let),
+            "true" => Token::new(Variant::True),
+            "false" => Token::new(Variant::False),
+            "if" => Token::new(Variant::If),
+            "else" => Token::new(Variant::Else),
+            "return" => Token::new(Variant::Return),
+            _ => Token::new_with_value(Variant::Identifier, x),
         };
 
         token
@@ -143,8 +142,8 @@ impl Lexer{
             self.read_char();
         }
 
-        let num: i32 = FromStr::from_str(&self.input[start..self.position]).unwrap();
-        Token::Integer(num)
+        let num = &self.input[start..self.position];
+        Token::new_with_value(Variant::Integer, num)
     }
 
     fn is_identifier(&mut self, input: char) -> bool {
@@ -165,21 +164,21 @@ fn can_parse_string() {
     let mut sut = Lexer::new(input);
 
     let expected_results = [
-        Token::Assign, 
-        Token::Plus,
-        Token::LeftParentheses,
-        Token::RightParentheses,
-        Token::LeftBrace,
-        Token::RightBrace,
-        Token::Comma,
-        Token::Semicolon,
-        Token::Illegal,
-        Token::EndOfFile
+        Variant::Assign, 
+        Variant::Plus,
+        Variant::LeftParentheses,
+        Variant::RightParentheses,
+        Variant::LeftBrace,
+        Variant::RightBrace,
+        Variant::Comma,
+        Variant::Semicolon,
+        Variant::Illegal,
+        Variant::EndOfFile
         ];
 
     for expected in expected_results {
         let actual = sut.next_token();
-        assert_eq!(actual, expected);
+        assert_eq!(actual.variant, expected);
     }
 }
 
@@ -212,80 +211,80 @@ fn can_parse_simple_program() {
     let mut sut = Lexer::new(input);
 
     let expected_results = [
-        Token::Let, 
-        Token::Identifier(String::from("five")),
-        Token::Assign,
-        Token::Integer(5),
-        Token::Semicolon,
-        Token::Let, 
-        Token::Identifier(String::from("ten")),
-        Token::Assign,
-        Token::Integer(10),
-        Token::Semicolon,
-        Token::Let, 
-        Token::Identifier(String::from("add")),
-        Token::Assign,
-        Token::Function,
-        Token::LeftParentheses,
-        Token::Identifier(String::from("x")),
-        Token::Comma,
-        Token::Identifier(String::from("y")),
-        Token::RightParentheses,
-        Token::LeftBrace,
-        Token::Identifier(String::from("x")),
-        Token::Plus,
-        Token::Identifier(String::from("y")),
-        Token::Semicolon,
-        Token::RightBrace,
-        Token::Semicolon,
-        Token::Let, 
-        Token::Identifier(String::from("result")),
-        Token::Assign,
-        Token::Identifier(String::from("add")),
-        Token::LeftParentheses,
-        Token::Identifier(String::from("five")),
-        Token::Comma,
-        Token::Identifier(String::from("ten")),
-        Token::RightParentheses,
-        Token::Semicolon,
-        Token::Bang,
-        Token::Minus,
-        Token::Slash,
-        Token::Asterisk,
-        Token::Integer(5),
-        Token::Semicolon,
-        Token::Integer(5),
-        Token::LessThan,
-        Token::Integer(10),
-        Token::GreaterThan,
-        Token::Integer(5),
-        Token::Semicolon,
-        Token::If,
-        Token::LeftParentheses,
-        Token::Integer(5),
-        Token::LessThan,
-        Token::Integer(10),
-        Token::RightParentheses,
-        Token::LeftBrace,
-        Token::Return,
-        Token::True,
-        Token::Semicolon,
-        Token::RightBrace,
-        Token::Else,
-        Token::LeftBrace,
-        Token::Return,
-        Token::False,
-        Token::Semicolon,
-        Token::RightBrace,
-        Token::Integer(10),
-        Token::Equals,
-        Token::Integer(10),
-        Token::Semicolon,
-        Token::Integer(10),
-        Token::NotEqual,
-        Token::Integer(9),
-        Token::Semicolon,
-        Token::EndOfFile
+        Token::new(Variant::Let), 
+        Token::new_with_value(Variant::Identifier, "five"),
+        Token::new(Variant::Assign),
+        Token::new_with_value(Variant::Integer, "5"),
+        Token::new(Variant::Semicolon),
+        Token::new(Variant::Let), 
+        Token::new_with_value(Variant::Identifier, "ten"),
+        Token::new(Variant::Assign),
+        Token::new_with_value(Variant::Integer,"10"),
+        Token::new(Variant::Semicolon),
+        Token::new(Variant::Let), 
+        Token::new_with_value(Variant::Identifier, "add"),
+        Token::new(Variant::Assign),
+        Token::new(Variant::Function),
+        Token::new(Variant::LeftParentheses),
+        Token::new_with_value(Variant::Identifier, "x"),
+        Token::new(Variant::Comma),
+        Token::new_with_value(Variant::Identifier, "y"),
+        Token::new(Variant::RightParentheses),
+        Token::new(Variant::LeftBrace),
+        Token::new_with_value(Variant::Identifier, "x"),
+        Token::new(Variant::Plus),
+        Token::new_with_value(Variant::Identifier, "y"),
+        Token::new(Variant::Semicolon),
+        Token::new(Variant::RightBrace),
+        Token::new(Variant::Semicolon),
+        Token::new(Variant::Let), 
+        Token::new_with_value(Variant::Identifier, "result"),
+        Token::new(Variant::Assign),
+        Token::new_with_value(Variant::Identifier, "add"),
+        Token::new(Variant::LeftParentheses),
+        Token::new_with_value(Variant::Identifier, "five"),
+        Token::new(Variant::Comma),
+        Token::new_with_value(Variant::Identifier, "ten"),
+        Token::new(Variant::RightParentheses),
+        Token::new(Variant::Semicolon),
+        Token::new(Variant::Bang),
+        Token::new(Variant::Minus),
+        Token::new(Variant::Slash),
+        Token::new(Variant::Asterisk),
+        Token::new_with_value(Variant::Integer, "5"),
+        Token::new(Variant::Semicolon),
+        Token::new_with_value(Variant::Integer, "5"),
+        Token::new(Variant::LessThan),
+        Token::new_with_value(Variant::Integer, "10"),
+        Token::new(Variant::GreaterThan),
+        Token::new_with_value(Variant::Integer, "5"),
+        Token::new(Variant::Semicolon),
+        Token::new(Variant::If),
+        Token::new(Variant::LeftParentheses),
+        Token::new_with_value(Variant::Integer, "5"),
+        Token::new(Variant::LessThan),
+        Token::new_with_value(Variant::Integer, "10"),
+        Token::new(Variant::RightParentheses),
+        Token::new(Variant::LeftBrace),
+        Token::new(Variant::Return),
+        Token::new(Variant::True),
+        Token::new(Variant::Semicolon),
+        Token::new(Variant::RightBrace),
+        Token::new(Variant::Else),
+        Token::new(Variant::LeftBrace),
+        Token::new(Variant::Return),
+        Token::new(Variant::False),
+        Token::new(Variant::Semicolon),
+        Token::new(Variant::RightBrace),
+        Token::new_with_value(Variant::Integer, "10"),
+        Token::new(Variant::Equals),
+        Token::new_with_value(Variant::Integer, "10"),
+        Token::new(Variant::Semicolon),
+        Token::new_with_value(Variant::Integer, "10"),
+        Token::new(Variant::NotEqual),
+        Token::new_with_value(Variant::Integer, "9"),
+        Token::new(Variant::Semicolon),
+        Token::new(Variant::EndOfFile)
         ];
 
     for expected in expected_results {

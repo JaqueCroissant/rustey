@@ -1,9 +1,9 @@
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum Token{
+#[derive(Debug, Hash, PartialEq, Eq, Clone)]
+pub enum Variant {
     Illegal,
     EndOfFile,
-    Identifier(String),
-    Integer(i32),
+    Identifier,
+    Integer,
     Assign,
     Plus,
     Minus,
@@ -27,4 +27,26 @@ pub enum Token{
     Return,
     Equals,
     NotEqual
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct Token {
+    pub variant: Variant,
+    pub value: Option<String>
+}
+
+impl Token {
+    pub fn new(variant: Variant) -> Token {
+        Token {
+            variant,
+            value: None
+        }
+    }
+    
+    pub fn new_with_value(variant: Variant, value: &str) -> Token {
+        Token {
+            variant,
+            value: Some(value.to_string())
+        }
+    }
 }
