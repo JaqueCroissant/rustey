@@ -1,3 +1,4 @@
+use super::ast::{Expression, ExprVariant, Statement};
 use super::lexer::Lexer;
 use super::token::{Token,Variant};
 use std::collections::HashMap;
@@ -20,56 +21,11 @@ impl Program {
     }
 }
 
-#[derive(Debug, PartialEq)]
-pub struct Identifier{
-    pub token_variant: Variant,
-    pub value: String    
-}
-
-impl Identifier {
-    pub fn new(value: String) -> Identifier{
-        Identifier { token_variant: Variant::Identifier, value }
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub struct Expression{}
-
-pub struct Statement{
-    pub token_variant: Variant,
-    pub identifier: Option<Identifier>,
-    pub expression: Option<Expression>
-}
-
-impl Statement {
-    pub fn new_identifier(token_variant: Variant, identifier: Identifier) -> Statement {
-        let statement = Statement { 
-            token_variant,
-            identifier: Some(identifier),
-            expression: None
-          };
-
-        statement
-    }
-
-    pub fn new_expression(token_variant: Variant, expression: Option<Expression>) -> Statement {
-        let statement = Statement { 
-            token_variant,
-            identifier: None,
-            expression: expression
-          };
-
-        statement
-    }
-}
-
 pub struct Parser{
     lexer: Lexer,
     current_token: Token,
     peek_token: Token,
     errors: Vec<String>,
-    prefix_parse_functions: HashMap<Variant, fn() -> Option<Expression>>,
-    infix_parse_functions: HashMap<Variant, fn() -> Option<Expression>>
 }
 
 impl Parser {
@@ -79,12 +35,10 @@ impl Parser {
             lexer, 
             current_token: Token::new(Variant::Illegal), 
             peek_token: Token::new(Variant::Illegal),
-            errors: vec![],
-            prefix_parse_functions: HashMap::new(),
-            infix_parse_functions: HashMap::new()
+            errors: vec![]
         };
 
-        //parser.register_prefix_function(Variant::Identifier(()));
+        //parser.register_prefix_function(Variant::Identifier, &parser.infix_parse_function);
 
         parser.next_token();
         parser.next_token();
@@ -161,8 +115,8 @@ impl Parser {
           return None;
         };
 
-        let identifier = Identifier::new(value);
-        let statement = Statement::new_identifier(Variant::Let, identifier);
+        let expression = Expression::new(ExprVariant::Identifier, value);
+        let statement = Statement::new(Variant::Let, Some(expression));
 
         while self.current_token.variant == Variant::Semicolon {
             self.next_token();
@@ -172,8 +126,8 @@ impl Parser {
     }
 
     fn parse_return_statement(&mut self) -> Option<Statement> {
-        let expression = Expression{};
-        let statement = Statement::new_expression(Variant::Return, Some(expression));
+        let expression = Expression::new(ExprVariant::Identifier, "".to_string()); // FIX ME
+        let statement = Statement::new(Variant::Return, Some(expression));
 
         self.next_token();
 
@@ -192,7 +146,7 @@ impl Parser {
             return None;
         }
 
-        let statement = Statement::new_expression(self.current_token.variant.clone(), expression);
+        let statement = Statement::new(self.current_token.variant.clone(), expression);
 
         if self.peek_token_is(&Variant::Semicolon){
             self.next_token();
@@ -201,37 +155,28 @@ impl Parser {
         Some(statement)
     }
 
-    pub fn parse_identifier(&mut self) -> Option<Identifier> {
+    pub fn parse_identifier(&mut self) -> Option<Expression> {
         let result = match &self.current_token.value {
             Some(x) => x.clone(),
             _ => panic!()
         };
 
-        Some(Identifier::new(result.clone()))
+        Some(Expression::new(ExprVariant::Identifier, result.clone()))
     }
 
     fn parse_expression(&mut self, precedence: i32) -> Option<Expression>{
-        if !self.prefix_parse_functions.contains_key(&self.current_token.variant){
-            return None;
-        }
 
-        let prefix = self.prefix_parse_functions[&self.current_token.variant];
-        prefix()
+        match &self.current_token.variant {
+            Variant::Identifier => return self.parse_identifier(),
+            _ => return None
+        };
     }
 
-    fn register_prefix_function(&mut self, token: Variant, f: fn() -> Option<Expression>){
-        self.prefix_parse_functions.insert(token, f);
-    }
-
-    fn register_infix_function(&mut self, token: Variant, f: fn() -> Option<Expression>){
-        self.infix_parse_functions.insert(token, f);
-    }
-
-    fn prefix_parse_function() -> Option<Expression>{
+    fn prefix_parse_function(&mut self) -> Option<Expression>{
         None
     }
 
-    fn infix_parse_function(expression: Expression) -> Option<Expression>{
+    fn infix_parse_function(&mut self, expression: Expression) -> Option<Expression>{
         None
     }
 
@@ -264,9 +209,10 @@ fn let_statements() {
     
     for (i, _el) in expected_identifiers.iter().enumerate() {
         let statement = &program.statements[i];
-
+        
         assert_eq!(statement.token_variant, Variant::Let);
-        assert_eq!(statement.identifier.as_ref().unwrap().value, expected_identifiers[i]);
+        assert_eq!(statement.expression.as_ref().unwrap().variant, ExprVariant::Identifier);
+        assert_eq!(statement.expression.as_ref().unwrap().value, expected_identifiers[i]);
     }
 }
 
@@ -307,7 +253,6 @@ fn identifier_expressions() {
     
     for s in program.statements {
         assert_eq!(s.token_variant, Variant::Identifier);
-        assert_eq!(s.identifier, None);
         assert_ne!(s.expression, None);
     }
 }
