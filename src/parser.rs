@@ -58,10 +58,6 @@ impl Parser {
         false
     }
 
-    fn current_token_is(&self, variant: &Variant) -> bool{
-        &self.current_token.variant == variant
-    }
-
     fn peek_token_is(&self, variant: &Variant) -> bool{
         &self.peek_token.variant == variant
     }
@@ -128,11 +124,10 @@ impl Parser {
     }
 
     fn parse_return_statement(&mut self) -> Option<Statement> {
-        let expression = Expression::new(ExprVariant::Identifier, "".to_string()); // FIX ME
+        let expression = Expression::new(ExprVariant::Identifier, "".to_string()); // TODO: FIX ME
         let statement = Statement::new(Variant::Return, Some(expression));
 
         self.next_token();
-
 
         while self.current_token.variant != Variant::Semicolon {
             self.next_token();
@@ -342,5 +337,51 @@ fn prefix_expressions() {
         assert_eq!(statement.token_variant, Variant::Integer);
         assert_eq!(expression.variant, x);
         assert_eq!(expression.value, y.to_string());
+    }
+}
+
+#[test]
+fn infix_expressions() {
+    let input = "
+    5 + 5;
+    5 - 5;
+    5 * 5;
+    5 / 5;
+    5 > 5;
+    5 < 5;
+    5 == 5;
+    5 != 5;
+    ".to_string();
+
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+
+    let program = parser.parse_program();
+
+    let expected = [
+        ("5", ExprVariant::Infix(Infix::Plus), "5"), 
+        ("5", ExprVariant::Infix(Infix::Minus), "5"),
+        ("5", ExprVariant::Infix(Infix::Multiply), "5"),
+        ("5", ExprVariant::Infix(Infix::Divide), "5"),
+        ("5", ExprVariant::Infix(Infix::GT), "5"),
+        ("5", ExprVariant::Infix(Infix::LT), "5"),
+        ("5", ExprVariant::Infix(Infix::Equals), "5"),
+        ("5", ExprVariant::Infix(Infix::NotEquals), "5")
+    ];
+
+    println!("{:?}", program);
+
+    assert_eq!(parser.errors.len(), 0);
+    assert_eq!(program.statements.len(), 2);
+    
+    for i in 0..2 {
+
+        let (x, y, z) = expected[i].clone();
+        let statement = program.statements[i].clone();
+        let expression = statement.expression.unwrap();
+
+        assert_eq!(statement.token_variant, Variant::Integer);
+        assert_eq!(expression.variant, y;
+        assert_eq!(expression.value, x.to_string());
     }
 }
