@@ -1,30 +1,30 @@
 use super::token::Variant;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Expression{
     pub variant: ExprVariant,
-    pub value: String,
-    pub operator: Option<String>
+    pub value: String
 }
 
 impl Expression {
     pub fn new(variant: ExprVariant, value: String) -> Expression {
-        Expression { variant, value, operator: None }
+        Expression { variant, value }
     }
 
-    pub fn new_with_operator(variant: ExprVariant, value: String, operator: String) -> Expression {
-        Expression { variant, value, operator: Some(operator) }
+    pub fn override_variant(&mut self, variant: ExprVariant) {
+        self.variant = variant;
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum ExprVariant {
     Identifier,
-    Infix,
+    Infix(Infix),
     Integer,
-    Prefix
+    Prefix(Prefix)
 }
 
+#[derive(Debug, Clone)]
 pub struct Statement{
     pub token_variant: Variant,
     pub expression: Option<Expression>
@@ -39,4 +39,22 @@ impl Statement {
 
         statement
     }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum Prefix {
+    Minus,
+    Bang
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum Infix {
+    Plus,
+    Minus,
+    Multiply,
+    Divide,
+    LT,
+    GT,
+    Equals,
+    NotEquals,
 }
