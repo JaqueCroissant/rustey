@@ -196,9 +196,9 @@ impl Parser {
                 | Variant::NotEqual => left = self.parse_infix(left),
                 _ => (),
             }
-        } else {
-            return left;
         }
+        
+        return left;
     }
 
     left
@@ -219,9 +219,8 @@ impl Parser {
 
             return Some(prefix_expression);
         }
-        else{
-            return None;
-        }
+        
+        return None;
     }
 
     fn parse_infix(&mut self, left_expression: Expression) -> Expression {

@@ -61,9 +61,8 @@ impl Lexer{
             self.read_char();
             return Token::new(Variant::Equals);
         }
-        else{
-            return Token::new(Variant::Assign);
-        }
+        
+        Token::new(Variant::Assign)
     }
 
     fn bang_or_not_equal(&mut self) -> Token {
@@ -73,9 +72,8 @@ impl Lexer{
             self.read_char();
             return Token::new(Variant::NotEqual);
         }
-        else{
-            return Token::new(Variant::Bang);
-        }
+
+        return Token::new(Variant::Bang);
     }
 
     fn read_char(&mut self) {
@@ -93,9 +91,8 @@ impl Lexer{
         if self.read_position > self.input.len() {
             return None;
         }
-        else{
-            return self.input.chars().nth(self.read_position);
-        }
+        
+        return self.input.chars().nth(self.read_position)
     }
 
     fn skip_whitespace(&mut self) {
