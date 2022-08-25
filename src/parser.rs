@@ -5,12 +5,12 @@ use super::token::{Token,Variant};
 #[derive(Debug, PartialEq, PartialOrd)]
 enum Precedence {
     Lowest = 0,
-    Equals = 1,
-    LessOrGreater = 2,
-    Sum = 3,
-    Product = 4,
-    Prefix = 5,
-    Call = 6
+    Equals,
+    LessOrGreater,
+    Sum,
+    Product,
+    Prefix,
+    Call
 }
 
 #[derive(Debug)]
@@ -71,14 +71,14 @@ impl Parser {
     }
 
     fn peek_precedence(&mut self) -> Precedence {
-        self.precedence(self.peek_token.variant.clone())
+        self.precedence(&self.peek_token.variant)
     }
 
     fn current_precedence(&mut self) -> Precedence {
-        self.precedence(self.current_token.variant.clone())
+        self.precedence(&self.current_token.variant)
     }
 
-    fn precedence(&self, variant: Variant) -> Precedence {
+    fn precedence(&self, variant: &Variant) -> Precedence {
         match variant {
             Variant::Plus | Variant::Minus => Precedence::Sum,
             Variant::LessThan | Variant::GreaterThan => Precedence::LessOrGreater,
@@ -158,7 +158,7 @@ impl Parser {
     }
 
     fn parse_expression_statement(&mut self) -> Option<Statement> {
-        let expression = self.parse_expression(Precedence::Lowest, self.current_token.clone());
+        let expression = self.parse_expression(Precedence::Lowest);
 
         let statement = Statement::new(self.current_token.variant.clone(), Some(expression));
 
@@ -169,70 +169,19 @@ impl Parser {
         Some(statement)
     }
 
-    pub fn parse_generic(&mut self) -> Option<Expression> {
-
-        let current = self.current_token.clone();
-
-        if current.value == None {
-            return None;
-        }
-
-        let result = match current.variant {
-            Variant::Identifier => Expression::Identifier(current.value.unwrap()),
-            Variant::Integer => Expression::Integer(current.value.unwrap()),
-            x => {
-                let message = format!("expected identifier or integer but got {:?}", x);
-                self.errors.push(message);
-                return None;
-            }
-        };
-
-        Some(result)
-    }
-
-    /*
-    fn parse_expression(&mut self, precedence: Precedence) -> Option<Expression>{
-        let mut expression = self.parse_prefix();
-        
-        if expression == None {
-            let generic_expr = self.parse_generic();
-
-            if generic_expr != None{
-                expression.replace(generic_expr.unwrap());
-            }
-        }
-
-        while !self.peek_token_is(&Variant::Semicolon) && precedence < self.peek_precedence(){
-            if !self.can_parse_as_infix(self.current_token.clone().variant){
-                return expression;
-            }
-
-            let infix_expr = self.parse_infix(expression.clone().unwrap());
-
-            if infix_expr != None {
-                expression.replace(infix_expr.unwrap());
-            }
-
-            self.next_token();
-        }
-        
-        expression
-    }
-*/
-
-fn parse_expression(&mut self, precedence: Precedence, token: Token) -> Expression {
-    let mut left = match token.variant {
-        Variant::Identifier => Expression::Identifier(token.value.unwrap()),
-        Variant::Integer => Expression::Integer(token.value.unwrap()),
+    fn parse_expression(&mut self, precedence: Precedence) -> Expression {
+        let mut left = match &self.current_token.variant {
+        Variant::Identifier => Expression::Identifier(self.current_token.value.clone().unwrap()),
+        Variant::Integer => Expression::Integer(self.current_token.value.clone().unwrap()),
         Variant::Bang | Variant::Minus => self.parse_prefix().unwrap(),
         //Variant::Boolean(b) => Expression::Bool(b),
         //Variant::LParenthesis => self.parse_group_expression(),
-        _ => panic!("TODO: Implement more operators??: {:?}", token),
+        _ => panic!("TODO: Implement more operators??: {:?}", self.current_token.variant),
     };
 
 
-    while !self.peek_token_is(&Variant::EndOfFile) {
-        if self.peek_token.variant != Variant::Semicolon && precedence < self.precedence(self.peek_token.variant.clone())
+    while self.peek_token.variant != Variant::EndOfFile {
+        if self.peek_token.variant != Variant::Semicolon && precedence < self.precedence(&self.peek_token.variant)
         {
             self.next_token();
             let t = self.current_token.clone();
@@ -244,7 +193,7 @@ fn parse_expression(&mut self, precedence: Precedence, token: Token) -> Expressi
                 | Variant::GreaterThan
                 | Variant::LessThan
                 | Variant::Equals
-                | Variant::NotEqual => left = self.parse_infix(t, left),
+                | Variant::NotEqual => left = self.parse_infix(left),
                 _ => (),
             }
         } else {
@@ -264,7 +213,7 @@ fn parse_expression(&mut self, precedence: Precedence, token: Token) -> Expressi
 
         if prefix != None {
             self.next_token();
-            let expression = self.parse_expression(Precedence::Prefix, self.current_token.clone());
+            let expression = self.parse_expression(Precedence::Prefix);
 
             let prefix_expression = Expression::Prefix(prefix.unwrap(), Box::new(expression));
 
@@ -275,22 +224,7 @@ fn parse_expression(&mut self, precedence: Precedence, token: Token) -> Expressi
         }
     }
 
-    fn can_parse_as_infix(&self, variant: Variant) -> bool {
-        let valid_variants = [
-            Variant::Plus,
-            Variant::Minus,
-            Variant::Asterisk,
-            Variant::Slash,
-            Variant::LessThan,
-            Variant::GreaterThan,
-            Variant::Equals,
-            Variant::NotEqual
-        ];
-
-        valid_variants.contains(&variant)
-    }
-
-    fn parse_infix(&mut self, token: Token, left_expression: Expression) -> Expression {
+    fn parse_infix(&mut self, left_expression: Expression) -> Expression {
 
         let variant = match self.current_token.variant {
             Variant::Plus => Infix::Plus,
@@ -304,15 +238,13 @@ fn parse_expression(&mut self, precedence: Precedence, token: Token) -> Expressi
             _ => panic!("invalid infix expression")
         };
 
-        let precedence = self.precedence(token.clone().variant);
+        let precedence = self.precedence(&self.current_token.variant);
         self.next_token();
 
-        let right_expression = self.parse_expression(precedence, token);
+        let right_expression = self.parse_expression(precedence);
 
         Expression::Infix(Box::new(left_expression), variant, Box::new(right_expression))
     }
-
-    
 }
 
 #[cfg(test)]
@@ -476,9 +408,9 @@ fn infix_expressions() {
     println!("{:?}", program);
 
     assert_eq!(parser.errors.len(), 0);
-    assert_eq!(program.statements.len(), 16);
+    assert_eq!(program.statements.len(), 8);
     
-    for i in 0..16 {
+    for i in 0..8 {
 
         let x = expected[i].clone();
         let statement = program.statements[i].clone();

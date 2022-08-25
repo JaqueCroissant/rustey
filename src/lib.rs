@@ -9,7 +9,7 @@ use parser::Parser;
 //this is basically the REPL (Read, Eval, Print, Loop)
 
 pub fn run(input: String){
-    let mut lexer = Lexer::new(input);
+    let lexer = Lexer::new(input);
     let mut parser = Parser::new(lexer);
     let program = parser.parse_program();
 }
