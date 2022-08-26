@@ -1,7 +1,5 @@
 use super::token::Variant;
 
-
-
 #[derive(Debug, Clone)]
 pub struct Statement{
     pub token_variant: Variant,
@@ -24,7 +22,8 @@ pub enum Expression {
     Identifier(String),
     Infix(Box<Expression>, Infix, Box<Expression>),
     Integer(String),
-    Prefix(Prefix, Box<Expression>)
+    Prefix(Prefix, Box<Expression>),
+    Bool(bool)
 }
 
 #[derive(Debug, PartialEq, Clone)]

@@ -169,39 +169,51 @@ impl Parser {
         Some(statement)
     }
 
-    fn parse_expression(&mut self, precedence: Precedence) -> Expression {
-        let mut left = match &self.current_token.variant {
-        Variant::Identifier => Expression::Identifier(self.current_token.value.clone().unwrap()),
-        Variant::Integer => Expression::Integer(self.current_token.value.clone().unwrap()),
-        Variant::Bang | Variant::Minus => self.parse_prefix().unwrap(),
-        //Variant::Boolean(b) => Expression::Bool(b),
-        //Variant::LParenthesis => self.parse_group_expression(),
-        _ => panic!("TODO: Implement more operators??: {:?}", self.current_token.variant),
-    };
-
-
-    while self.peek_token.variant != Variant::EndOfFile {
-        if self.peek_token.variant != Variant::Semicolon && precedence < self.precedence(&self.peek_token.variant)
-        {
-            self.next_token();
-            let t = self.current_token.clone();
-            match t.variant {
-                Variant::Plus
-                | Variant::Minus
-                | Variant::Asterisk
-                | Variant::Slash
-                | Variant::GreaterThan
-                | Variant::LessThan
-                | Variant::Equals
-                | Variant::NotEqual => left = self.parse_infix(left),
-                _ => (),
+    fn parse_bool(&mut self) -> Option<bool> {
+        let result = match self.current_token.variant {
+            Variant::False => false,
+            Variant::True => true,
+            _ => {
+                let message = format!("expected boolean but got {:?}", self.current_token.variant);
+                self.errors.push(message);
+                return None;
             }
-        }
-        
-        return left;
+        };
+
+        Some(result)
     }
 
-    left
+    fn parse_expression(&mut self, precedence: Precedence) -> Expression {
+        let mut left_expression = match &self.current_token.variant {
+            Variant::Identifier => Expression::Identifier(self.current_token.value.clone().unwrap()),
+            Variant::Integer => Expression::Integer(self.current_token.value.clone().unwrap()),
+            Variant::Bang | Variant::Minus => self.parse_prefix().unwrap(),
+            Variant::True | Variant::False => Expression::Bool(self.parse_bool().unwrap()),
+            //Variant::LParenthesis => self.parse_group_expression(),
+            _ => panic!("TODO: Implement more operators??: {:?}", self.current_token.variant),
+        };
+
+
+        while self.peek_token.variant != Variant::EndOfFile {
+            if self.peek_token.variant != Variant::Semicolon && precedence < self.precedence(&self.peek_token.variant)
+            {
+                self.next_token();
+                let t = self.current_token.clone();
+                match t.variant {
+                    Variant::Plus
+                    | Variant::Minus
+                    | Variant::Asterisk
+                    | Variant::Slash
+                    | Variant::GreaterThan
+                    | Variant::LessThan
+                    | Variant::Equals
+                    | Variant::NotEqual => left_expression = self.parse_infix(left_expression),
+                    _ => (),
+                }
+            }   
+            return left_expression;
+        }
+    left_expression
 }
 
     fn parse_prefix(&mut self) -> Option<Expression>{
@@ -417,5 +429,42 @@ fn infix_expressions() {
 
         assert_eq!(statement.token_variant, Variant::Integer);
         assert_eq!(expression, x);
+    }
+}
+
+#[test]
+fn boolean_expressions() {
+    let input = "
+    true;
+    false;
+    let foobar = true;
+    let barfoo = false;
+    ".to_string();
+
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+
+    let program = parser.parse_program();
+
+    println!("{:?}", program);
+
+    let expected = [
+        (Variant::True, Expression::Bool(true)),
+        (Variant::False, Expression::Bool(false)),
+        (Variant::Let, Expression::Identifier("foobar".to_string())),
+        (Variant::True, Expression::Bool(true)),
+        (Variant::Let, Expression::Identifier("barfoo".to_string())),
+        (Variant::False, Expression::Bool(false))
+    ];
+
+    assert_eq!(parser.errors.len(), 0);
+    assert_eq!(program.statements.len(), 6);
+    
+    for i in 0..6 {
+        let s = &program.statements[i];
+        let (x, y) = &expected[i];
+
+        assert_eq!(&s.token_variant, x);
+        assert_eq!(s.expression.as_ref().unwrap(), y);
     }
 }
