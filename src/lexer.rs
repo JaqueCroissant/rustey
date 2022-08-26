@@ -120,11 +120,10 @@ impl Lexer{
         let token = match x {
             "fn" => Token::new(Variant::Function),
             "let" => Token::new(Variant::Let),
-            "true" => Token::new(Variant::True),
-            "false" => Token::new(Variant::False),
             "if" => Token::new(Variant::If),
             "else" => Token::new(Variant::Else),
             "return" => Token::new(Variant::Return),
+            "true" | "false" => Token::new_with_value(Variant::Bool, x),
             _ => Token::new_with_value(Variant::Identifier, x),
         };
 
@@ -264,13 +263,13 @@ fn can_parse_simple_program() {
         Token::new(Variant::RightParentheses),
         Token::new(Variant::LeftBrace),
         Token::new(Variant::Return),
-        Token::new(Variant::True),
+        Token::new_with_value(Variant::Bool, "true"),
         Token::new(Variant::Semicolon),
         Token::new(Variant::RightBrace),
         Token::new(Variant::Else),
         Token::new(Variant::LeftBrace),
         Token::new(Variant::Return),
-        Token::new(Variant::False),
+        Token::new_with_value(Variant::Bool, "false"),
         Token::new(Variant::Semicolon),
         Token::new(Variant::RightBrace),
         Token::new_with_value(Variant::Integer, "10"),

@@ -170,17 +170,21 @@ impl Parser {
     }
 
     fn parse_bool(&mut self) -> Option<bool> {
-        let result = match self.current_token.variant {
-            Variant::False => false,
-            Variant::True => true,
-            _ => {
-                let message = format!("expected boolean but got {:?}", self.current_token.variant);
+
+        if self.current_token.value == None {
+            let message = format!("expected boolean but found no value");
+            self.errors.push(message);
+            return None;
+        }
+
+        match self.current_token.value.clone().unwrap().parse::<bool>() {
+            Ok(x) => return Some(x),
+            Err(x) => {
+                let message = format!("failed to parse bool; {:?}", x);
                 self.errors.push(message);
                 return None;
             }
         };
-
-        Some(result)
     }
 
     fn parse_expression(&mut self, precedence: Precedence) -> Expression {
@@ -188,7 +192,7 @@ impl Parser {
             Variant::Identifier => Expression::Identifier(self.current_token.value.clone().unwrap()),
             Variant::Integer => Expression::Integer(self.current_token.value.clone().unwrap()),
             Variant::Bang | Variant::Minus => self.parse_prefix().unwrap(),
-            Variant::True | Variant::False => Expression::Bool(self.parse_bool().unwrap()),
+            Variant::Bool => Expression::Bool(self.parse_bool().unwrap()),
             //Variant::LParenthesis => self.parse_group_expression(),
             _ => panic!("TODO: Implement more operators??: {:?}", self.current_token.variant),
         };
@@ -398,6 +402,8 @@ fn infix_expressions() {
     5 < 5;
     5 == 5;
     5 != 5;
+    true != false;
+    true == true;
     ".to_string();
 
     let lexer = Lexer::new(input);
@@ -406,29 +412,31 @@ fn infix_expressions() {
     let program = parser.parse_program();
 
     let expected = [
-        Expression::Infix(Box::new(Expression::Integer("5".to_string())), Infix::Plus, Box::new(Expression::Integer("5".to_string()))),
-        Expression::Infix(Box::new(Expression::Integer("5".to_string())), Infix::Minus, Box::new(Expression::Integer("5".to_string()))),
-        Expression::Infix(Box::new(Expression::Integer("5".to_string())), Infix::Multiply, Box::new(Expression::Integer("5".to_string()))),
-        Expression::Infix(Box::new(Expression::Integer("5".to_string())), Infix::Divide, Box::new(Expression::Integer("5".to_string()))),
-        Expression::Infix(Box::new(Expression::Integer("5".to_string())), Infix::GreaterThan, Box::new(Expression::Integer("5".to_string()))),
-        Expression::Infix(Box::new(Expression::Integer("5".to_string())), Infix::LessThan, Box::new(Expression::Integer("5".to_string()))),
-        Expression::Infix(Box::new(Expression::Integer("5".to_string())), Infix::Equals, Box::new(Expression::Integer("5".to_string()))),
-        Expression::Infix(Box::new(Expression::Integer("5".to_string())), Infix::NotEqual, Box::new(Expression::Integer("5".to_string())))
+        (Variant::Integer, Expression::Infix(Box::new(Expression::Integer("5".to_string())), Infix::Plus, Box::new(Expression::Integer("5".to_string())))),
+        (Variant::Integer, Expression::Infix(Box::new(Expression::Integer("5".to_string())), Infix::Minus, Box::new(Expression::Integer("5".to_string())))),
+        (Variant::Integer, Expression::Infix(Box::new(Expression::Integer("5".to_string())), Infix::Multiply, Box::new(Expression::Integer("5".to_string())))),
+        (Variant::Integer, Expression::Infix(Box::new(Expression::Integer("5".to_string())), Infix::Divide, Box::new(Expression::Integer("5".to_string())))),
+        (Variant::Integer, Expression::Infix(Box::new(Expression::Integer("5".to_string())), Infix::GreaterThan, Box::new(Expression::Integer("5".to_string())))),
+        (Variant::Integer, Expression::Infix(Box::new(Expression::Integer("5".to_string())), Infix::LessThan, Box::new(Expression::Integer("5".to_string())))),
+        (Variant::Integer, Expression::Infix(Box::new(Expression::Integer("5".to_string())), Infix::Equals, Box::new(Expression::Integer("5".to_string())))),
+        (Variant::Integer, Expression::Infix(Box::new(Expression::Integer("5".to_string())), Infix::NotEqual, Box::new(Expression::Integer("5".to_string())))),
+        (Variant::Bool, Expression::Infix(Box::new(Expression::Bool(true)), Infix::NotEqual, Box::new(Expression::Bool(false)))),
+        (Variant::Bool, Expression::Infix(Box::new(Expression::Bool(true)), Infix::Equals, Box::new(Expression::Bool(true)))),
     ];
 
     println!("{:?}", program);
 
     assert_eq!(parser.errors.len(), 0);
-    assert_eq!(program.statements.len(), 8);
+    assert_eq!(program.statements.len(), 10);
     
-    for i in 0..8 {
+    for i in 0..10 {
 
-        let x = expected[i].clone();
+        let (x, y) = expected[i].clone();
         let statement = program.statements[i].clone();
         let expression = statement.expression.unwrap();
 
-        assert_eq!(statement.token_variant, Variant::Integer);
-        assert_eq!(expression, x);
+        assert_eq!(statement.token_variant, x);
+        assert_eq!(expression, y);
     }
 }
 
@@ -449,12 +457,12 @@ fn boolean_expressions() {
     println!("{:?}", program);
 
     let expected = [
-        (Variant::True, Expression::Bool(true)),
-        (Variant::False, Expression::Bool(false)),
+        (Variant::Bool, Expression::Bool(true)),
+        (Variant::Bool, Expression::Bool(false)),
         (Variant::Let, Expression::Identifier("foobar".to_string())),
-        (Variant::True, Expression::Bool(true)),
+        (Variant::Bool, Expression::Bool(true)),
         (Variant::Let, Expression::Identifier("barfoo".to_string())),
-        (Variant::False, Expression::Bool(false))
+        (Variant::Bool, Expression::Bool(false))
     ];
 
     assert_eq!(parser.errors.len(), 0);
