@@ -1,18 +1,35 @@
 use super::token::Variant;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Statement{
-    pub token_variant: Variant,
+    pub variant: Variant,
     pub expression: Option<Expression>
 }
 
 impl Statement {
-    pub fn new(token_variant: Variant, expression: Option<Expression>) -> Statement {
+    pub fn new(variant: Variant, expression: Option<Expression>) -> Statement {
         let statement = Statement { 
-            token_variant,
+            variant: variant,
             expression: expression
             };
 
+        statement
+    }
+}
+
+#[derive(Debug, Clone,PartialEq)]
+pub struct BlockStatement{
+    pub variant: Variant,
+    pub statements: Vec<Statement>
+}
+
+impl BlockStatement {
+    pub fn new(variant: Variant) -> BlockStatement {
+        let statement = BlockStatement { 
+            variant: variant,
+            statements: vec![]
+            };
+            
         statement
     }
 }
@@ -21,9 +38,10 @@ impl Statement {
 pub enum Expression {
     Identifier(String),
     Infix(Box<Expression>, Infix, Box<Expression>),
-    Integer(String),
+    Integer(i32),
     Prefix(Prefix, Box<Expression>),
-    Bool(bool)
+    Bool(bool),
+    If(Box<Expression>, BlockStatement)
 }
 
 #[derive(Debug, PartialEq, Clone)]

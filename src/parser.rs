@@ -1,3 +1,5 @@
+use crate::ast::BlockStatement;
+
 use super::ast::{Expression, Statement, Prefix, Infix};
 use super::lexer::Lexer;
 use super::token::{Token,Variant};
@@ -187,13 +189,86 @@ impl Parser {
         };
     }
 
+    fn parse_integer(&mut self) -> Option<i32> {
+
+        if self.current_token.value == None {
+            let message = format!("expected integer but found no value");
+            self.errors.push(message);
+            return None;
+        }
+
+        match self.current_token.value.clone().unwrap().parse::<i32>() {
+            Ok(x) => return Some(x),
+            Err(x) => {
+                let message = format!("failed to parse integer; {:?}", x);
+                self.errors.push(message);
+                return None;
+            }
+        };
+    }
+
+    fn parse_group(&mut self) -> Option<Expression>{
+        self.next_token();
+
+        let expression = self.parse_expression(Precedence::Lowest);
+
+        if !self.expect_peek(Variant::RightParentheses){
+            return None;
+        }
+
+        Some(expression)
+    }
+
+    fn parse_block(&mut self) -> BlockStatement {
+        let mut block = BlockStatement::new(Variant::LeftBrace);
+
+        self.next_token();
+
+        while self.current_token.variant != Variant::RightBrace && 
+              self.current_token.variant != Variant::EndOfFile {
+            
+            let statement = self.parse_statement();
+
+            if statement != None {
+                block.statements.push(statement.unwrap());
+            }
+
+            self.next_token();
+        } 
+
+        block
+    }
+
+    fn parse_if(&mut self) -> Option<Expression> {
+
+        if !self.expect_peek(Variant::LeftParentheses){
+            return None;
+        }
+
+        self.next_token();
+        let condition = self.parse_expression(Precedence::Lowest);
+
+        if !self.expect_peek(Variant::RightParentheses){
+            return None;
+        }
+
+        if !self.expect_peek(Variant::LeftBrace){
+            return None;
+        }
+
+        let consequence = self.parse_block();
+
+        Some(Expression::If(Box::new(condition), consequence))
+    }
+
     fn parse_expression(&mut self, precedence: Precedence) -> Expression {
         let mut left_expression = match &self.current_token.variant {
             Variant::Identifier => Expression::Identifier(self.current_token.value.clone().unwrap()),
-            Variant::Integer => Expression::Integer(self.current_token.value.clone().unwrap()),
+            Variant::Integer => Expression::Integer(self.parse_integer().unwrap()),
             Variant::Bang | Variant::Minus => self.parse_prefix().unwrap(),
             Variant::Bool => Expression::Bool(self.parse_bool().unwrap()),
-            //Variant::LParenthesis => self.parse_group_expression(),
+            Variant::LeftParentheses => self.parse_group().unwrap(),
+            Variant::If => self.parse_if().unwrap(),
             _ => panic!("TODO: Implement more operators??: {:?}", self.current_token.variant),
         };
 
@@ -279,10 +354,10 @@ fn let_statements() {
 
     let expected = [
         (Variant::Let, Expression::Identifier("dingus".to_string())),
-        (Variant::Integer, Expression::Integer("5".to_string())),
+        (Variant::Integer, Expression::Integer(5)),
         (Variant::Let, Expression::Identifier("y".to_string())),
-        (Variant::Integer, Expression::Integer("10".to_string())),
-        (Variant::Integer, Expression::Integer("838383".to_string())),
+        (Variant::Integer, Expression::Integer(10)),
+        (Variant::Integer, Expression::Integer(838383)),
     ];
 
     assert_eq!(parser.errors.len(), 1);
@@ -293,7 +368,7 @@ fn let_statements() {
         
         let (x, y) = expected[i].clone();
 
-        assert_eq!(statement.token_variant, x);
+        assert_eq!(statement.variant, x);
         assert_eq!(statement.expression.as_ref().unwrap(), &y);
     }
 }
@@ -315,7 +390,7 @@ fn return_statements() {
     assert_eq!(program.statements.len(), 3);
     
     for s in program.statements {
-        assert_eq!(s.token_variant, Variant::Return);
+        assert_eq!(s.variant, Variant::Return);
     }
 }
 
@@ -334,7 +409,7 @@ fn identifier_expressions() {
     assert_eq!(program.statements.len(), 1);
     
     for s in program.statements {
-        assert_eq!(s.token_variant, Variant::Identifier);
+        assert_eq!(s.variant, Variant::Identifier);
         assert_eq!(s.expression.as_ref().unwrap(), &Expression::Identifier("foobar".to_string()));
     }
 }
@@ -354,8 +429,8 @@ fn integer_expressions() {
     assert_eq!(program.statements.len(), 1);
     
     for s in program.statements {
-        assert_eq!(s.token_variant, Variant::Integer);
-        assert_eq!(s.expression.as_ref().unwrap(), &Expression::Integer("5".to_string()));
+        assert_eq!(s.variant, Variant::Integer);
+        assert_eq!(s.expression.as_ref().unwrap(), &Expression::Integer(5));
     }
 }
 
@@ -372,8 +447,9 @@ fn prefix_expressions() {
     let program = parser.parse_program();
 
     let expected = [
-        Expression::Prefix(Prefix::Bang, Box::new(Expression::Integer("5".to_string()))), 
-        Expression::Prefix(Prefix::Minus, Box::new(Expression::Integer("15".to_string())))];
+        Expression::Prefix(Prefix::Bang, Box::new(Expression::Integer(5))), 
+        Expression::Prefix(Prefix::Minus, Box::new(Expression::Integer(15)))
+    ];
 
     println!("{:?}", program);
 
@@ -381,12 +457,11 @@ fn prefix_expressions() {
     assert_eq!(program.statements.len(), 2);
     
     for i in 0..2 {
-
         let x = expected[i].clone();
         let statement = program.statements[i].clone();
         let expression = statement.expression.unwrap();
 
-        assert_eq!(statement.token_variant, Variant::Integer);
+        assert_eq!(statement.variant, Variant::Integer);
         assert_eq!(expression, x);
     }
 }
@@ -412,14 +487,14 @@ fn infix_expressions() {
     let program = parser.parse_program();
 
     let expected = [
-        (Variant::Integer, Expression::Infix(Box::new(Expression::Integer("5".to_string())), Infix::Plus, Box::new(Expression::Integer("5".to_string())))),
-        (Variant::Integer, Expression::Infix(Box::new(Expression::Integer("5".to_string())), Infix::Minus, Box::new(Expression::Integer("5".to_string())))),
-        (Variant::Integer, Expression::Infix(Box::new(Expression::Integer("5".to_string())), Infix::Multiply, Box::new(Expression::Integer("5".to_string())))),
-        (Variant::Integer, Expression::Infix(Box::new(Expression::Integer("5".to_string())), Infix::Divide, Box::new(Expression::Integer("5".to_string())))),
-        (Variant::Integer, Expression::Infix(Box::new(Expression::Integer("5".to_string())), Infix::GreaterThan, Box::new(Expression::Integer("5".to_string())))),
-        (Variant::Integer, Expression::Infix(Box::new(Expression::Integer("5".to_string())), Infix::LessThan, Box::new(Expression::Integer("5".to_string())))),
-        (Variant::Integer, Expression::Infix(Box::new(Expression::Integer("5".to_string())), Infix::Equals, Box::new(Expression::Integer("5".to_string())))),
-        (Variant::Integer, Expression::Infix(Box::new(Expression::Integer("5".to_string())), Infix::NotEqual, Box::new(Expression::Integer("5".to_string())))),
+        (Variant::Integer, Expression::Infix(Box::new(Expression::Integer(5)), Infix::Plus, Box::new(Expression::Integer(5)))),
+        (Variant::Integer, Expression::Infix(Box::new(Expression::Integer(5)), Infix::Minus, Box::new(Expression::Integer(5)))),
+        (Variant::Integer, Expression::Infix(Box::new(Expression::Integer(5)), Infix::Multiply, Box::new(Expression::Integer(5)))),
+        (Variant::Integer, Expression::Infix(Box::new(Expression::Integer(5)), Infix::Divide, Box::new(Expression::Integer(5)))),
+        (Variant::Integer, Expression::Infix(Box::new(Expression::Integer(5)), Infix::GreaterThan, Box::new(Expression::Integer(5)))),
+        (Variant::Integer, Expression::Infix(Box::new(Expression::Integer(5)), Infix::LessThan, Box::new(Expression::Integer(5)))),
+        (Variant::Integer, Expression::Infix(Box::new(Expression::Integer(5)), Infix::Equals, Box::new(Expression::Integer(5)))),
+        (Variant::Integer, Expression::Infix(Box::new(Expression::Integer(5)), Infix::NotEqual, Box::new(Expression::Integer(5)))),
         (Variant::Bool, Expression::Infix(Box::new(Expression::Bool(true)), Infix::NotEqual, Box::new(Expression::Bool(false)))),
         (Variant::Bool, Expression::Infix(Box::new(Expression::Bool(true)), Infix::Equals, Box::new(Expression::Bool(true)))),
     ];
@@ -435,7 +510,7 @@ fn infix_expressions() {
         let statement = program.statements[i].clone();
         let expression = statement.expression.unwrap();
 
-        assert_eq!(statement.token_variant, x);
+        assert_eq!(statement.variant, x);
         assert_eq!(expression, y);
     }
 }
@@ -472,7 +547,35 @@ fn boolean_expressions() {
         let s = &program.statements[i];
         let (x, y) = &expected[i];
 
-        assert_eq!(&s.token_variant, x);
+        assert_eq!(&s.variant, x);
         assert_eq!(s.expression.as_ref().unwrap(), y);
+    }
+}
+
+#[test]
+fn if_else_expression() {
+    let input = "if (x < y) { x } else { y }".to_string();
+
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+
+    let program = parser.parse_program();
+
+    let expected = [
+        Expression::Prefix(Prefix::Bang, Box::new(Expression::Integer(5)))
+    ];
+
+    println!("{:?}", program);
+
+    assert_eq!(parser.errors.len(), 0);
+    assert_eq!(program.statements.len(), 1);
+    
+    for i in 0..2 {
+        let x = expected[i].clone();
+        let statement = program.statements[i].clone();
+        let expression = statement.expression.unwrap();
+
+        assert_eq!(statement.variant, Variant::LeftParentheses);
+        assert_eq!(expression, x);
     }
 }
