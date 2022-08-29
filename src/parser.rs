@@ -109,7 +109,6 @@ impl Parser {
 
     fn parse_statement(&mut self) -> Option<Statement> {
 
-        println!("{:?}", self.current_token.variant);
         let result = match self.current_token.variant {
             Variant::Let => self.parse_let_statement(),
             Variant::Return => self.parse_return_statement(),
@@ -275,6 +274,51 @@ impl Parser {
         Some(Expression::If(Box::new(condition), consequence))
     }
 
+    fn parse_function(&mut self) -> Option<Expression> {
+        if !self.expect_peek(Variant::LeftParentheses){
+            return None;
+        }
+
+        let parameters = self.parse_function_params();
+        
+        if !self.expect_peek(Variant::LeftBrace){
+            return None;
+        }
+
+        let body = self.parse_block();
+
+        Some(Expression::Function(parameters, body))
+    }
+
+    fn parse_function_params(&mut self) -> Vec<Expression> {
+        let mut parameters = vec![];
+
+        if self.peek_token_is(&Variant::RightParentheses){
+            self.next_token();
+            return parameters;
+        }
+
+        self.next_token();
+
+        loop {
+            let parameter = Expression::Identifier(self.current_token.value.clone().unwrap());
+            parameters.push(parameter);
+
+            if !self.peek_token_is(&Variant::Comma) {
+                break;
+            }
+
+            self.next_token();
+            self.next_token();
+        }
+
+        if !self.expect_peek(Variant::RightParentheses){
+            return vec![];
+        }
+
+        parameters
+    }
+
     fn parse_expression(&mut self, precedence: Precedence) -> Expression {
         let mut left_expression = match &self.current_token.variant {
             Variant::Identifier => Expression::Identifier(self.current_token.value.clone().unwrap()),
@@ -283,6 +327,7 @@ impl Parser {
             Variant::Bool => Expression::Bool(self.parse_bool().unwrap()),
             Variant::LeftParentheses => self.parse_group().unwrap(),
             Variant::If => self.parse_if().unwrap(),
+            Variant::Function => self.parse_function().unwrap(),
             _ => panic!("TODO: Implement more operators??: {:?}", self.current_token.variant),
         };
 
@@ -465,8 +510,6 @@ fn prefix_expressions() {
         (Variant::Minus, Expression::Prefix(Prefix::Minus, Box::new(Expression::Integer(15))))
     ];
 
-    println!("{:?}", program);
-
     assert_eq!(parser.errors.len(), 0);
     assert_eq!(program.statements.len(), 2);
     
@@ -513,8 +556,6 @@ fn infix_expressions() {
         (Variant::Bool, Expression::Infix(Box::new(Expression::Bool(true)), Infix::Equals, Box::new(Expression::Bool(true)))),
     ];
 
-    println!("{:?}", program);
-
     assert_eq!(parser.errors.len(), 0);
     assert_eq!(program.statements.len(), 10);
     
@@ -543,8 +584,6 @@ fn boolean_expressions() {
 
     let program = parser.parse_program();
 
-    println!("{:?}", program);
-
     let expected = [
         (Variant::Bool, Expression::Bool(true)),
         (Variant::Bool, Expression::Bool(false)),
@@ -564,6 +603,42 @@ fn boolean_expressions() {
         assert_eq!(&s.variant, x);
         assert_eq!(s.expression.as_ref().unwrap(), y);
     }
+}
+
+#[test]
+fn if_expression() {
+    let input = "if (x < y) { x }".to_string();
+
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+
+    let program = parser.parse_program();
+
+    let expected = [
+        Expression::If(
+            Box::new(Expression::Infix(
+                Box::new(Expression::Identifier("x".to_string())), 
+                Infix::LessThan, 
+                Box::new(Expression::Identifier("y".to_string())))), 
+                BlockStatement::new_with_statements(
+                    Variant::LeftBrace, 
+                    vec![
+                        Statement::new(
+                            Variant::Identifier, 
+                            Some(Expression::Identifier("x".to_string())))
+                    ])
+            )
+    ];
+
+    assert_eq!(parser.errors.len(), 0);
+    assert_eq!(program.statements.len(), 1);
+    
+    let x = expected[0].clone();
+    let statement = program.statements[0].clone();
+    let expression = statement.expression.unwrap();
+
+    assert_eq!(statement.variant, Variant::If);
+    assert_eq!(expression, x);
 }
 
 #[test]
@@ -602,12 +677,56 @@ fn if_else_expression() {
     assert_eq!(parser.errors.len(), 0);
     assert_eq!(program.statements.len(), 1);
     
-    for i in 0..1 {
-        let x = expected[i].clone();
-        let statement = program.statements[i].clone();
-        let expression = statement.expression.unwrap();
+    let x = expected[0].clone();
+    let statement = program.statements[0].clone();
+    let expression = statement.expression.unwrap();
 
-        assert_eq!(statement.variant, Variant::If);
-        assert_eq!(expression, x);
-    }
+    assert_eq!(statement.variant, Variant::If);
+    assert_eq!(expression, x);
+
+}
+
+#[test]
+fn function_expression() {
+    let input = "fn(x, y) { x + y; }".to_string();
+
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+
+    let program = parser.parse_program();
+
+    let expected = 
+        Expression::Function(
+            vec![
+                Expression::Identifier("x".to_string()),
+                Expression::Identifier("y".to_string())
+            ],
+            BlockStatement::new_with_statements(
+                Variant::LeftBrace, 
+                vec![
+                    Statement::new(
+                        Variant::Identifier, 
+                        Some(Expression::Infix(
+                                Box::new(
+                                    Expression::Identifier("x".to_string())
+                                ), 
+                            Infix::Plus, 
+                            Box::new(
+                                Expression::Identifier("y".to_string())
+                                )
+                            )
+                        )
+                    ),
+                ]
+            )
+        );
+
+    assert_eq!(parser.errors.len(), 0);
+    assert_eq!(program.statements.len(), 1);
+    
+    let statement = program.statements[0].clone();
+    let expression = statement.expression.unwrap();
+
+    assert_eq!(statement.variant, Variant::Function);
+    assert_eq!(expression, expected);
 }

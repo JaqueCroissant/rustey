@@ -51,7 +51,8 @@ pub enum Expression {
     Prefix(Prefix, Box<Expression>),
     Bool(bool),
     If(Box<Expression>, BlockStatement),
-    IfElse(Box<Expression>, BlockStatement, BlockStatement)
+    IfElse(Box<Expression>, BlockStatement, BlockStatement),
+    Function(Vec<Expression>, BlockStatement)
 }
 
 #[derive(Debug, PartialEq, Clone)]
