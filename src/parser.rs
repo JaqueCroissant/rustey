@@ -86,6 +86,7 @@ impl Parser {
             Variant::LessThan | Variant::GreaterThan => Precedence::LessOrGreater,
             Variant::Slash | Variant::Asterisk => Precedence::Product,
             Variant::Equals | Variant::NotEqual => Precedence::Equals,
+            Variant::LeftParentheses => Precedence::Call,
             _ => Precedence::Lowest,
         }
     }
@@ -346,6 +347,7 @@ impl Parser {
                     | Variant::LessThan
                     | Variant::Equals
                     | Variant::NotEqual => left_expression = self.parse_infix(left_expression),
+                    Variant::LeftParentheses => left_expression = self.parse_call_expression(left_expression),
                     _ => (),
                 }
             }   
@@ -384,6 +386,7 @@ impl Parser {
             Variant::GreaterThan => Infix::GreaterThan,
             Variant::Equals => Infix::Equals,
             Variant::NotEqual => Infix::NotEqual,
+            Variant::LeftParentheses => Infix::Call,
             _ => panic!("invalid infix expression")
         };
 
@@ -394,7 +397,39 @@ impl Parser {
 
         Expression::Infix(Box::new(left_expression), variant, Box::new(right_expression))
     }
+
+    fn parse_call_expression(&mut self, function: Expression) -> Expression {
+        let arguments = self.parse_call_arguments();
+        Expression::Call(Box::new(function), arguments)
+    }
+
+    fn parse_call_arguments(&mut self) -> Vec<Expression>{
+        let mut args = vec![];
+
+        if self.peek_token_is(&Variant::RightParentheses){
+            self.next_token();
+            return args;
+        }
+
+        self.next_token();
+        args.push(self.parse_expression(Precedence::Lowest));
+
+        while self.peek_token_is(&Variant::Comma){
+            self.next_token();
+            self.next_token();
+
+            args.push(self.parse_expression(Precedence::Lowest));
+        }
+
+        if !self.expect_peek(Variant::RightParentheses) {
+            return vec![];
+        }
+
+        return args;
+    }
 }
+
+
 
 #[cfg(test)]
 #[test]
@@ -728,5 +763,49 @@ fn function_expression() {
     let expression = statement.expression.unwrap();
 
     assert_eq!(statement.variant, Variant::Function);
+    assert_eq!(expression, expected);
+}
+
+#[test]
+fn call_expression() {
+    let input = "add(1, 2 * 3, 4 + 5);".to_string();
+
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+
+    let program = parser.parse_program();
+    println!("{:?}", program);
+    let expected = Expression::Call(
+        Box::new(
+            Expression::Identifier("add".to_string())), 
+            vec![
+                Expression::Integer(1),
+                Expression::Infix(
+                    Box::new(
+                        Expression::Integer(2)
+                    ), 
+                    Infix::Multiply, 
+                    Box::new(
+                        Expression::Integer(3)
+                    )
+                ),
+                Expression::Infix(
+                    Box::new(
+                        Expression::Integer(4)
+                    ), 
+                    Infix::Plus, 
+                    Box::new(
+                        Expression::Integer(5)
+                    )
+                )
+            ]);
+
+    assert_eq!(parser.errors.len(), 0);
+    assert_eq!(program.statements.len(), 1);
+    
+    let statement = program.statements[0].clone();
+    let expression = statement.expression.unwrap();
+
+    assert_eq!(statement.variant, Variant::Identifier);
     assert_eq!(expression, expected);
 }

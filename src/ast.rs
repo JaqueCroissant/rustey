@@ -52,7 +52,8 @@ pub enum Expression {
     Bool(bool),
     If(Box<Expression>, BlockStatement),
     IfElse(Box<Expression>, BlockStatement, BlockStatement),
-    Function(Vec<Expression>, BlockStatement)
+    Function(Vec<Expression>, BlockStatement),
+    Call(Box<Expression>, Vec<Expression>)
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -71,4 +72,5 @@ pub enum Infix {
     GreaterThan,
     Equals,
     NotEqual,
+    Call
 }
