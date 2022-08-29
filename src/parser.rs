@@ -108,6 +108,8 @@ impl Parser {
     }
 
     fn parse_statement(&mut self) -> Option<Statement> {
+
+        println!("{:?}", self.current_token.variant);
         let result = match self.current_token.variant {
             Variant::Let => self.parse_let_statement(),
             Variant::Return => self.parse_return_statement(),
@@ -160,9 +162,10 @@ impl Parser {
     }
 
     fn parse_expression_statement(&mut self) -> Option<Statement> {
+        let current_token = self.current_token.variant.clone();
         let expression = self.parse_expression(Precedence::Lowest);
-
-        let statement = Statement::new(self.current_token.variant.clone(), Some(expression));
+        
+        let statement = Statement::new(current_token, Some(expression));
 
         if self.peek_token_is(&Variant::Semicolon){
             self.next_token();
@@ -240,7 +243,6 @@ impl Parser {
     }
 
     fn parse_if(&mut self) -> Option<Expression> {
-
         if !self.expect_peek(Variant::LeftParentheses){
             return None;
         }
@@ -257,6 +259,18 @@ impl Parser {
         }
 
         let consequence = self.parse_block();
+
+        if self.peek_token_is(&Variant::Else) {
+            self.next_token();
+
+            if !self.expect_peek(Variant::LeftBrace){
+                return None;
+            }
+
+            let alternative = self.parse_block();
+
+            return Some(Expression::IfElse(Box::new(condition), consequence, alternative));
+        }
 
         Some(Expression::If(Box::new(condition), consequence))
     }
@@ -447,8 +461,8 @@ fn prefix_expressions() {
     let program = parser.parse_program();
 
     let expected = [
-        Expression::Prefix(Prefix::Bang, Box::new(Expression::Integer(5))), 
-        Expression::Prefix(Prefix::Minus, Box::new(Expression::Integer(15)))
+        (Variant::Bang, Expression::Prefix(Prefix::Bang, Box::new(Expression::Integer(5)))), 
+        (Variant::Minus, Expression::Prefix(Prefix::Minus, Box::new(Expression::Integer(15))))
     ];
 
     println!("{:?}", program);
@@ -457,12 +471,12 @@ fn prefix_expressions() {
     assert_eq!(program.statements.len(), 2);
     
     for i in 0..2 {
-        let x = expected[i].clone();
+        let (x, y) = expected[i].clone();
         let statement = program.statements[i].clone();
         let expression = statement.expression.unwrap();
 
-        assert_eq!(statement.variant, Variant::Integer);
-        assert_eq!(expression, x);
+        assert_eq!(statement.variant, x);
+        assert_eq!(expression, y);
     }
 }
 
@@ -562,20 +576,38 @@ fn if_else_expression() {
     let program = parser.parse_program();
 
     let expected = [
-        Expression::Prefix(Prefix::Bang, Box::new(Expression::Integer(5)))
+        Expression::IfElse(
+            Box::new(Expression::Infix(
+                Box::new(Expression::Identifier("x".to_string())), 
+                Infix::LessThan, 
+                Box::new(Expression::Identifier("y".to_string())))), 
+                BlockStatement::new_with_statements(
+                    Variant::LeftBrace, 
+                    vec![
+                        Statement::new(
+                            Variant::Identifier, 
+                            Some(Expression::Identifier("x".to_string())))
+                    ]),
+                BlockStatement::new_with_statements(
+                    Variant::LeftBrace, 
+                    vec![
+                        Statement::new(
+                            Variant::Identifier, 
+                            Some(Expression::Identifier("y".to_string())))
+                    ]
+                )
+            )
     ];
-
-    println!("{:?}", program);
 
     assert_eq!(parser.errors.len(), 0);
     assert_eq!(program.statements.len(), 1);
     
-    for i in 0..2 {
+    for i in 0..1 {
         let x = expected[i].clone();
         let statement = program.statements[i].clone();
         let expression = statement.expression.unwrap();
 
-        assert_eq!(statement.variant, Variant::LeftParentheses);
+        assert_eq!(statement.variant, Variant::If);
         assert_eq!(expression, x);
     }
 }

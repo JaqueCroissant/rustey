@@ -32,6 +32,15 @@ impl BlockStatement {
             
         statement
     }
+
+    pub fn new_with_statements(variant: Variant, statements: Vec<Statement>) -> BlockStatement {
+        let statement = BlockStatement { 
+            variant: variant,
+            statements: statements
+            };
+            
+        statement
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -41,7 +50,8 @@ pub enum Expression {
     Integer(i32),
     Prefix(Prefix, Box<Expression>),
     Bool(bool),
-    If(Box<Expression>, BlockStatement)
+    If(Box<Expression>, BlockStatement),
+    IfElse(Box<Expression>, BlockStatement, BlockStatement)
 }
 
 #[derive(Debug, PartialEq, Clone)]
