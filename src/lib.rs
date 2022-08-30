@@ -1,19 +1,35 @@
 mod lexer;
 mod token;
+mod parser;
+mod ast;
 
 use lexer::Lexer;
-use token::Token;
+use parser::{Parser, Program};
+
+//this is basically the REPL (Read, Eval, Print, Loop)
 
 pub fn run(input: String){
-    let mut lexer = Lexer::new(input);
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
 
-    loop{
-        let token = lexer.next_token();
+    if parser.errors.len() != 0 {
+        print_errors(&parser.errors);
+    }
 
-        println!("{:?}", token);
+    print_program(&program);
+}
 
-        if token == Token::EndOfFile {
-            break;
-        }
+fn print_errors(errors: &Vec<String>){
+    println!("Rustey encountered the following errors while parsing your program:");
+    for error in errors {
+        println!("{}", error);    
+    }
+    println!("");
+}
+
+fn print_program(program: &Program) {
+    for statement in program.statements.clone() {
+        println!("{:?}", statement);   
     }
 }
