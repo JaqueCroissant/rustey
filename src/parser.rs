@@ -20,7 +20,7 @@ pub struct Program {
 }
 
 impl Program {
-    fn new() -> Program {
+    pub fn new() -> Program {
         return Program { statements: vec![] }
     }
 }
