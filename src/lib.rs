@@ -2,9 +2,11 @@ mod lexer;
 mod token;
 mod parser;
 mod ast;
+mod object;
 
 use lexer::Lexer;
 use parser::{Parser, Program};
+use object::Object;
 
 //this is basically the REPL (Read, Eval, Print, Loop)
 
