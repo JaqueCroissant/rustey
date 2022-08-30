@@ -29,7 +29,7 @@ pub struct Parser{
     lexer: Lexer,
     current_token: Token,
     peek_token: Token,
-    errors: Vec<String>,
+    pub errors: Vec<String>,
 }
 
 impl Parser {
@@ -351,6 +351,7 @@ impl Parser {
     }
 
     fn parse_expression(&mut self, precedence: Precedence) -> Expression {
+        
         let mut left_expression = match &self.current_token.variant {
             Variant::Identifier => self.parse_identifier().unwrap(),
             Variant::Integer => Expression::Integer(self.parse_integer().unwrap()),
@@ -361,7 +362,6 @@ impl Parser {
             Variant::Function => self.parse_function().unwrap(),
             _ => panic!("TODO: Implement more operators??: {:?}", self.current_token.variant),
         };
-
 
         while self.peek_token.variant != Variant::EndOfFile {
             if self.peek_token.variant != Variant::Semicolon && precedence < self.precedence(&self.peek_token.variant)
@@ -381,7 +381,9 @@ impl Parser {
                     _ => (),
                 }
             }   
-            return left_expression;
+            else {
+                return left_expression;
+            }
         }
     left_expression
 }
@@ -469,6 +471,7 @@ fn let_statements() {
     let dingus = 5;
     let y = 10;
     let foobar 838383;
+    let x = 1 * 2 * 3 * 4 * 5;
     ".to_string();
 
     let lexer = Lexer::new(input);
@@ -480,12 +483,47 @@ fn let_statements() {
         (Variant::Let, Expression::Identifier("dingus".to_string(), Some(Box::new(Expression::Integer(5))))),
         (Variant::Let, Expression::Identifier("y".to_string(), Some(Box::new(Expression::Integer(10))))),
         (Variant::Integer, Expression::Integer(838383)),
+        (Variant::Let, Expression::Identifier("x".to_string(), Some(Box::new(
+            Expression::Infix(
+                Box::new(
+                    Expression::Infix(
+                        Box::new(
+                            Expression::Infix(
+                                Box::new(
+                                    Expression::Infix(
+                                        Box::new(
+                                            Expression::Integer(1)
+                                        ), 
+                                        Infix::Multiply, 
+                                        Box::new(
+                                            Expression::Integer(2)
+                                        )
+                                    )
+                                ), 
+                                Infix::Multiply, 
+                                Box::new(
+                                    Expression::Integer(3)
+                                )
+                            )
+                        ), 
+                        Infix::Multiply, 
+                        Box::new(
+                            Expression::Integer(4)
+                        )
+                    )
+                ), 
+                Infix::Multiply, 
+                Box::new(
+                    Expression::Integer(5)
+                )
+            ))))
+        )
     ];
 
     assert_eq!(parser.errors.len(), 1);
-    assert_eq!(program.statements.len(), 3);
+    assert_eq!(program.statements.len(), 4);
     
-    for i in 0..3 {
+    for i in 0..4 {
         let statement = &program.statements[i];
         
         let (x, y) = expected[i].clone();
@@ -599,6 +637,7 @@ fn infix_expressions() {
     5 != 5;
     true != false;
     true == true;
+    1 * 2 * 3 * 4 * 5;
     ".to_string();
 
     let lexer = Lexer::new(input);
@@ -617,12 +656,24 @@ fn infix_expressions() {
         (Variant::Integer, Expression::Infix(Box::new(Expression::Integer(5)), Infix::NotEqual, Box::new(Expression::Integer(5)))),
         (Variant::Bool, Expression::Infix(Box::new(Expression::Bool(true)), Infix::NotEqual, Box::new(Expression::Bool(false)))),
         (Variant::Bool, Expression::Infix(Box::new(Expression::Bool(true)), Infix::Equals, Box::new(Expression::Bool(true)))),
+        (Variant::Integer, Expression::Infix(
+                            Box::new(Expression::Infix(
+                                Box::new(Expression::Infix(
+                                    Box::new(Expression::Infix(
+                                        Box::new(Expression::Integer(1)), 
+                                        Infix::Multiply, 
+                                        Box::new(Expression::Integer(2)))), 
+                                    Infix::Multiply, 
+                                    Box::new(Expression::Integer(3)))), 
+                                Infix::Multiply, 
+                                Box::new(Expression::Integer(4)))), 
+                            Infix::Multiply, Box::new(Expression::Integer(5)))), 
     ];
 
     assert_eq!(parser.errors.len(), 0);
-    assert_eq!(program.statements.len(), 10);
+    assert_eq!(program.statements.len(), 11);
     
-    for i in 0..10 {
+    for i in 0..11 {
 
         let (x, y) = expected[i].clone();
         let statement = program.statements[i].clone();
