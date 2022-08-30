@@ -45,7 +45,7 @@ impl BlockStatement {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Expression {
-    Identifier(String),
+    Identifier(String, Option<Box<Expression>>),
     Infix(Box<Expression>, Infix, Box<Expression>),
     Integer(i32),
     Prefix(Prefix, Box<Expression>),

@@ -1,8 +1,7 @@
-use crate::ast::BlockStatement;
 
-use super::ast::{Expression, Statement, Prefix, Infix};
-use super::lexer::Lexer;
-use super::token::{Token,Variant};
+use crate::ast::{BlockStatement, Expression, Statement, Prefix, Infix};
+use crate::lexer::Lexer;
+use crate::token::{Token,Variant};
 
 #[derive(Debug, PartialEq, PartialOrd)]
 enum Precedence {
@@ -138,23 +137,54 @@ impl Parser {
           return None;
         };
 
-        let expression = Expression::Identifier(value);
-        let statement = Statement::new(Variant::Let, Some(expression));
+        self.next_token();
 
-        while self.current_token.variant == Variant::Semicolon {
+        let expression = self.parse_expression(Precedence::Lowest);
+        let identifier = Expression::Identifier(value, Some(Box::new(expression)));
+        let statement = Statement::new(Variant::Let, Some(identifier));
+
+        if self.peek_token_is(&Variant::Semicolon) {
             self.next_token();
         }
 
         Some(statement)
     }
 
+    fn parse_identifier(&mut self) -> Option<Expression>{
+        let value = match &self.current_token.value { 
+            Some(x) => x.clone(),
+            _ => {
+                let message = format!("expected identifier but got {:?}", self.peek_token);
+                self.errors.push(message);
+                return None;
+            }
+        };
+
+        if !self.peek_token_is(&Variant::Assign){
+            return Some(Expression::Identifier(value, None));    
+        }
+  
+        self.next_token();
+  
+        let expression = self.parse_expression(Precedence::Lowest);
+        let identifier = Expression::Identifier(value, Some(Box::new(expression)));
+  
+        if self.peek_token_is(&Variant::Semicolon) {
+            self.next_token();
+        }
+        
+        Some(identifier)
+    }
+
     fn parse_return_statement(&mut self) -> Option<Statement> {
-        let expression = Expression::Identifier("".to_string()); // TODO: FIX ME
+        self.next_token();
+        
+        let expression = self.parse_expression(Precedence::Lowest);
         let statement = Statement::new(Variant::Return, Some(expression));
 
         self.next_token();
 
-        while self.current_token.variant != Variant::Semicolon {
+        if self.peek_token_is(&Variant::Semicolon){
             self.next_token();
         }
 
@@ -302,7 +332,7 @@ impl Parser {
         self.next_token();
 
         loop {
-            let parameter = Expression::Identifier(self.current_token.value.clone().unwrap());
+            let parameter = Expression::Identifier(self.current_token.value.clone().unwrap(), None);
             parameters.push(parameter);
 
             if !self.peek_token_is(&Variant::Comma) {
@@ -322,7 +352,7 @@ impl Parser {
 
     fn parse_expression(&mut self, precedence: Precedence) -> Expression {
         let mut left_expression = match &self.current_token.variant {
-            Variant::Identifier => Expression::Identifier(self.current_token.value.clone().unwrap()),
+            Variant::Identifier => self.parse_identifier().unwrap(),
             Variant::Integer => Expression::Integer(self.parse_integer().unwrap()),
             Variant::Bang | Variant::Minus => self.parse_prefix().unwrap(),
             Variant::Bool => Expression::Bool(self.parse_bool().unwrap()),
@@ -447,17 +477,15 @@ fn let_statements() {
     let program = parser.parse_program();
 
     let expected = [
-        (Variant::Let, Expression::Identifier("dingus".to_string())),
-        (Variant::Integer, Expression::Integer(5)),
-        (Variant::Let, Expression::Identifier("y".to_string())),
-        (Variant::Integer, Expression::Integer(10)),
+        (Variant::Let, Expression::Identifier("dingus".to_string(), Some(Box::new(Expression::Integer(5))))),
+        (Variant::Let, Expression::Identifier("y".to_string(), Some(Box::new(Expression::Integer(10))))),
         (Variant::Integer, Expression::Integer(838383)),
     ];
 
     assert_eq!(parser.errors.len(), 1);
-    assert_eq!(program.statements.len(), 5);
+    assert_eq!(program.statements.len(), 3);
     
-    for i in 0..5 {
+    for i in 0..3 {
         let statement = &program.statements[i];
         
         let (x, y) = expected[i].clone();
@@ -504,7 +532,7 @@ fn identifier_expressions() {
     
     for s in program.statements {
         assert_eq!(s.variant, Variant::Identifier);
-        assert_eq!(s.expression.as_ref().unwrap(), &Expression::Identifier("foobar".to_string()));
+        assert_eq!(s.expression.as_ref().unwrap(), &Expression::Identifier("foobar".to_string(), None));
     }
 }
 
@@ -618,20 +646,18 @@ fn boolean_expressions() {
     let mut parser = Parser::new(lexer);
 
     let program = parser.parse_program();
-
+    println!("{:?}", program);
     let expected = [
         (Variant::Bool, Expression::Bool(true)),
         (Variant::Bool, Expression::Bool(false)),
-        (Variant::Let, Expression::Identifier("foobar".to_string())),
-        (Variant::Bool, Expression::Bool(true)),
-        (Variant::Let, Expression::Identifier("barfoo".to_string())),
-        (Variant::Bool, Expression::Bool(false))
+        (Variant::Let, Expression::Identifier("foobar".to_string(), Some(Box::new(Expression::Bool(true))))),
+        (Variant::Let, Expression::Identifier("barfoo".to_string(), Some(Box::new(Expression::Bool(false))))),
     ];
 
     assert_eq!(parser.errors.len(), 0);
-    assert_eq!(program.statements.len(), 6);
+    assert_eq!(program.statements.len(), 4);
     
-    for i in 0..6 {
+    for i in 0..4 {
         let s = &program.statements[i];
         let (x, y) = &expected[i];
 
@@ -652,15 +678,15 @@ fn if_expression() {
     let expected = [
         Expression::If(
             Box::new(Expression::Infix(
-                Box::new(Expression::Identifier("x".to_string())), 
+                Box::new(Expression::Identifier("x".to_string(), None)), 
                 Infix::LessThan, 
-                Box::new(Expression::Identifier("y".to_string())))), 
+                Box::new(Expression::Identifier("y".to_string(), None)))), 
                 BlockStatement::new_with_statements(
                     Variant::LeftBrace, 
                     vec![
                         Statement::new(
                             Variant::Identifier, 
-                            Some(Expression::Identifier("x".to_string())))
+                            Some(Expression::Identifier("x".to_string(), None)))
                     ])
             )
     ];
@@ -688,22 +714,22 @@ fn if_else_expression() {
     let expected = [
         Expression::IfElse(
             Box::new(Expression::Infix(
-                Box::new(Expression::Identifier("x".to_string())), 
+                Box::new(Expression::Identifier("x".to_string(), None)), 
                 Infix::LessThan, 
-                Box::new(Expression::Identifier("y".to_string())))), 
+                Box::new(Expression::Identifier("y".to_string(), None)))), 
                 BlockStatement::new_with_statements(
                     Variant::LeftBrace, 
                     vec![
                         Statement::new(
                             Variant::Identifier, 
-                            Some(Expression::Identifier("x".to_string())))
+                            Some(Expression::Identifier("x".to_string(), None)))
                     ]),
                 BlockStatement::new_with_statements(
                     Variant::LeftBrace, 
                     vec![
                         Statement::new(
                             Variant::Identifier, 
-                            Some(Expression::Identifier("y".to_string())))
+                            Some(Expression::Identifier("y".to_string(), None)))
                     ]
                 )
             )
@@ -733,8 +759,8 @@ fn function_expression() {
     let expected = 
         Expression::Function(
             vec![
-                Expression::Identifier("x".to_string()),
-                Expression::Identifier("y".to_string())
+                Expression::Identifier("x".to_string(), None),
+                Expression::Identifier("y".to_string(), None)
             ],
             BlockStatement::new_with_statements(
                 Variant::LeftBrace, 
@@ -743,11 +769,11 @@ fn function_expression() {
                         Variant::Identifier, 
                         Some(Expression::Infix(
                                 Box::new(
-                                    Expression::Identifier("x".to_string())
+                                    Expression::Identifier("x".to_string(), None)
                                 ), 
                             Infix::Plus, 
                             Box::new(
-                                Expression::Identifier("y".to_string())
+                                Expression::Identifier("y".to_string(), None)
                                 )
                             )
                         )
@@ -777,7 +803,7 @@ fn call_expression() {
     println!("{:?}", program);
     let expected = Expression::Call(
         Box::new(
-            Expression::Identifier("add".to_string())), 
+            Expression::Identifier("add".to_string(), None)), 
             vec![
                 Expression::Integer(1),
                 Expression::Infix(
