@@ -1,5 +1,13 @@
+use std::env;
+
 use rustey::run;
 
 fn main() {
-    run(String::from("let x = 1 * 2 * 3 * 4 * 5;"));
+    let mut args = env::args();
+    args.next();
+    
+    match args.next() {
+        Some(arg) => run(arg),
+        None => return
+    };
 }

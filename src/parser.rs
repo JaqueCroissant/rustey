@@ -222,7 +222,7 @@ impl Parser {
         };
     }
 
-    fn parse_integer(&mut self) -> Option<i32> {
+    fn parse_integer(&mut self) -> Option<i64> {
 
         if self.current_token.value == None {
             let message = format!("expected integer but found no value");
@@ -230,12 +230,12 @@ impl Parser {
             return None;
         }
 
-        match self.current_token.value.clone().unwrap().parse::<i32>() {
+        match self.current_token.value.clone().unwrap().parse::<i64>() {
             Ok(x) => return Some(x),
             Err(x) => {
                 let message = format!("failed to parse integer; {:?}", x);
                 self.errors.push(message);
-                return None;
+                return Some(0);
             }
         };
     }

@@ -47,7 +47,7 @@ impl BlockStatement {
 pub enum Expression {
     Identifier(String, Option<Box<Expression>>),
     Infix(Box<Expression>, Infix, Box<Expression>),
-    Integer(i32),
+    Integer(i64),
     Prefix(Prefix, Box<Expression>),
     Bool(bool),
     If(Box<Expression>, BlockStatement),

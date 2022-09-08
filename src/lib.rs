@@ -5,7 +5,8 @@ mod ast;
 mod eval;
 
 use lexer::Lexer;
-use parser::{Parser, Program};
+use parser::Parser;
+use eval::Object;
 
 //this is basically the REPL (Read, Eval, Print, Loop)
 
@@ -16,9 +17,11 @@ pub fn run(input: String){
 
     if parser.errors.len() != 0 {
         print_errors(&parser.errors);
+        return;
     }
 
-    print_program(&program);
+    let evaluted_program = eval::evaluate_program(program);
+    print_program(&evaluted_program);
 }
 
 fn print_errors(errors: &Vec<String>){
@@ -29,8 +32,8 @@ fn print_errors(errors: &Vec<String>){
     println!("");
 }
 
-fn print_program(program: &Program) {
-    for statement in program.statements.clone() {
-        println!("{:?}", statement);   
+fn print_program(objects: &Vec<Object>) {
+    for o in objects {
+        println!("{:?}", eval::inspect(o));   
     }
 }
