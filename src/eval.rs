@@ -1,5 +1,5 @@
 use crate::parser::Program;
-use crate::ast::{Statement, Expression, Prefix};
+use crate::ast::{Statement, Expression, Prefix, Infix};
 use crate::token::Variant;
 
 pub enum Object {
@@ -42,14 +42,42 @@ fn evaluate_statement(statement: Statement) -> Object {
 fn evaluate_expression(expression: Expression) -> Object {
     
     match expression {
+        
         Expression::Integer(x) => return Object::Integer(x),
+        
         Expression::Bool(x) => return Object::Bool(x),
+        
         Expression::Prefix(pfx, expr) => {
             let right = evaluate_expression(*expr);
             return evaluate_prefix_expression(pfx, right)
         },
+
+        Expression::Infix(left_expr, infix, right_expr) => {
+            let left = evaluate_expression(*left_expr);
+            let right = evaluate_expression(*right_expr);
+            return evaluate_infix_expression(left, infix, right);
+        }
         _ => panic!("not implemented yet") 
     }
+}
+
+fn evaluate_infix_expression(left: Object, infix: Infix, right: Object) -> Object {
+    match (left, right) {
+        (Object::Integer(x), Object::Integer(y)) => return evaluate_infix_integer_expression(x, infix, y),
+        _ => panic!("infix expression not implemented yet")
+    }
+}
+
+fn evaluate_infix_integer_expression(left: i64, infix: Infix, right: i64) -> Object {
+    let value = match infix {
+        Infix::Divide => left / right,
+        Infix::Minus => left - right,
+        Infix::Multiply => left * right,
+        Infix::Plus => left + right,
+        _ => panic!("unexpected integer expression")
+    };
+
+    Object::Integer(value)
 }
 
 fn evaluate_prefix_expression(prefix: Prefix, object: Object) -> Object {
@@ -154,6 +182,99 @@ fn can_evaluate_minus_prefix() {
     let expected = [ 5, 10, -5, -10 ];
 
     for i in 0..4 {
+        
+        let actual = match evaluation[i]{
+            Object::Integer(x) => x,
+            _ => panic!("unexpected input")
+        };
+
+        assert_eq!(actual, expected[i]);
+    }
+}
+
+#[test]
+fn can_evaluate_infix_expressions() {
+    let mut input = Program::new();
+
+    let statements = vec!
+    [
+        // 5 + 5 + 5 + 5 - 10
+        Statement::new(Variant::Integer, Some(
+            Expression::Infix(
+                Box::new(Expression::Integer(5)), 
+                Infix::Plus,
+                Box::new(Expression::Infix(
+                    Box::new(Expression::Integer(5)), 
+                    Infix::Plus, 
+                    Box::new(Expression::Infix(
+                        Box::new(Expression::Integer(5)), 
+                            Infix::Plus,
+                            Box::new(Expression::Infix(
+                                Box::new(Expression::Integer(5)), 
+                                Infix::Minus, 
+                                Box::new(Expression::Integer(10))))))))))),
+        
+        // 2 * 2 * 2 * 2 * 2
+        Statement::new(Variant::Integer, Some(
+            Expression::Infix(
+                Box::new(Expression::Integer(2)), 
+                Infix::Multiply,
+                Box::new(Expression::Infix(
+                    Box::new(Expression::Integer(2)), 
+                    Infix::Multiply, 
+                    Box::new(Expression::Infix(
+                        Box::new(Expression::Integer(2)), 
+                            Infix::Multiply,
+                            Box::new(Expression::Infix(
+                                Box::new(Expression::Integer(2)), 
+                                Infix::Multiply, 
+                                Box::new(Expression::Integer(2))))))))))),
+        
+        // -50 + 100 + -50
+        Statement::new(Variant::Minus, Some(
+            Expression::Infix(
+                Box::new(Expression::Infix(
+                    Box::new(Expression::Prefix(
+                        Prefix::Minus, 
+                        Box::new(Expression::Integer(50)))), 
+                    Infix::Plus, 
+                    Box::new(Expression::Integer(100)))), 
+                Infix::Plus, 
+                Box::new(Expression::Prefix(
+                    Prefix::Minus, 
+                    Box::new(Expression::Integer(50))))))),
+
+        // 50 / 2 * 4
+        Statement::new(Variant::Integer, Some(
+            Expression::Infix(
+                Box::new(Expression::Infix(
+                    Box::new(Expression::Integer(50)), 
+                    Infix::Divide, 
+                    Box::new(Expression::Integer(2)))), 
+                    Infix::Multiply, 
+                    Box::new(Expression::Integer(4))))),
+
+        // 3 * (3 * 3) + 10
+        Statement::new(Variant::Integer, Some(
+            Expression::Infix(
+                Box::new(Expression::Infix(
+                    Box::new(Expression::Integer(3)), 
+                    Infix::Multiply, 
+                    Box::new(Expression::Infix(
+                        Box::new(Expression::Integer(3)), 
+                        Infix::Multiply, 
+                        Box::new(Expression::Integer(3)))))), 
+                Infix::Plus, 
+                Box::new(Expression::Integer(10)))))
+    ];
+
+    input.statements = statements;
+    
+    let evaluation = evaluate_program(input);
+
+    let expected = [ 10, 32, 0, 100, 37 ];
+
+    for i in 0..5 {
         
         let actual = match evaluation[i]{
             Object::Integer(x) => x,

@@ -17,9 +17,9 @@ pub fn run(input: String){
 
     if parser.errors.len() != 0 {
         print_errors(&parser.errors);
-        return;
+        //return;
     }
-
+    println!("{:?}", program);
     let evaluted_program = eval::evaluate_program(program);
     print_program(&evaluted_program);
 }
