@@ -20,7 +20,7 @@ pub fn run(input: String){
         //return;
     }
     println!("{:?}", program);
-    let evaluted_program = eval::evaluate_program(program);
+    let evaluted_program = eval::evaluate(program);
     print_program(&evaluted_program);
 }
 

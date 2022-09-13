@@ -9,7 +9,7 @@ pub enum Object {
     Integer(i64),
     Bool(bool),
     Empty,
-    ReturnValue(Option<Box<Object>>)
+    ReturnValue(Box<Object>)
 }
 
 pub fn inspect(object: &Object) -> String {
@@ -17,15 +17,14 @@ pub fn inspect(object: &Object) -> String {
         Object::Empty => "empty".to_string(),
         Object::Integer(x) => x.to_string(),
         Object::Bool(x) => x.to_string(),
-        Object::ReturnValue(None) => "empty".to_string(),
-        Object::ReturnValue(Some(x)) => inspect(x),
+        Object::ReturnValue(x) => inspect(x),
         _ => panic!("failed to inspect")
     };
 
     result
 }
 
-pub fn evaluate_program(program: Program) -> Vec<Object> {
+pub fn evaluate(program: Program) -> Vec<Object> {
 
     let mut objects: Vec<Object> = Vec::new();
     for statement in program.statements {
@@ -35,26 +34,17 @@ pub fn evaluate_program(program: Program) -> Vec<Object> {
     objects
 }
 
-fn evaluate_statements(statements: Vec<Statement>) -> Object {
-
-    //let mut objects: Vec<Object> = Vec::new();
-    
-    let mut result = Object::Empty;
-    for statement in statements {
-        result = evaluate_statement(statement);
-    }
-
-    result
-}
-
 fn evaluate_statement(statement: Statement) -> Object {
-    
-    match statement.expression {
-        Some(expr) => return evaluate_expression(expr),
-        None => match statement.variant {
-            _ => panic!("not implemented yet")
-        } 
+    let expr = match statement.expression {
+        Some(expr) => evaluate_expression(expr),
+        None => panic!("expected an expression but got none")
+    };
+
+    if statement.variant == Variant::Return{
+        return Object::ReturnValue(Box::new(expr))
     }
+
+    expr
 }
 
 fn evaluate_expression(expression: Expression) -> Object {
@@ -83,14 +73,29 @@ fn evaluate_expression(expression: Expression) -> Object {
     }
 }
 
+fn evaluate_block_statement(block: BlockStatement) -> Object {
+    let mut result = Object::Empty;
+    
+    for s in block.statements{
+        result = evaluate_statement(s);
+
+        match result {
+            Object::ReturnValue(_) => return result,
+            _ => ()
+        }
+    }
+
+    result
+}
+
 fn evaluate_if_else_expression(condition: Expression, consequence: BlockStatement, alternative: Option<BlockStatement>) -> Object {
     let condition = evaluate_expression(condition);
 
     if is_truthy(condition){
-        return evaluate_statements(consequence.statements);   
+        return evaluate_block_statement(consequence);   
     }
     else if alternative != None {
-        return evaluate_statements(alternative.unwrap().statements)
+        return evaluate_block_statement(alternative.unwrap())
     }
     
     Object::Empty    
@@ -162,7 +167,7 @@ fn can_evaluate_integers() {
     input.statements.push(Statement::new(Variant::Integer, Some(Expression::Integer(-48))));
     input.statements.push(Statement::new(Variant::Integer, Some(Expression::Integer(232323))));
 
-    let evaluation = evaluate_program(input);
+    let evaluation = evaluate(input);
 
     let expected = [ 5, -48, 232323 ];
 
@@ -200,7 +205,7 @@ fn can_evaluate_bools() {
     let mut input = Program::new();
     input.statements = statements;
 
-    let evaluation = evaluate_program(input);
+    let evaluation = evaluate(input);
 
     let expected = [ false, true, true, false, false, false, true, false, false, true, true, false, false, true ];
 
@@ -225,7 +230,7 @@ fn can_evaluate_bang_prefix() {
     input.statements.push(Statement::new(Variant::Bang, Some(Expression::Prefix(Prefix::Bang, Box::new(Expression::Prefix(Prefix::Bang, Box::new(Expression::Bool(false))))))));
     input.statements.push(Statement::new(Variant::Bang, Some(Expression::Prefix(Prefix::Bang, Box::new(Expression::Prefix(Prefix::Bang, Box::new(Expression::Integer(5))))))));
     
-    let evaluation = evaluate_program(input);
+    let evaluation = evaluate(input);
 
     let expected = [ false, true, false, true, false, true ];
 
@@ -248,7 +253,7 @@ fn can_evaluate_minus_prefix() {
     input.statements.push(Statement::new(Variant::Minus, Some(Expression::Prefix(Prefix::Minus, Box::new(Expression::Integer(5))))));
     input.statements.push(Statement::new(Variant::Minus, Some(Expression::Prefix(Prefix::Minus, Box::new(Expression::Integer(10))))));
     
-    let evaluation = evaluate_program(input);
+    let evaluation = evaluate(input);
 
     let expected = [ 5, 10, -5, -10 ];
 
@@ -341,7 +346,7 @@ fn can_evaluate_infix_expressions() {
 
     input.statements = statements;
     
-    let evaluation = evaluate_program(input);
+    let evaluation = evaluate(input);
 
     let expected = [ 10, 32, 0, 100, 37 ];
 
@@ -470,7 +475,7 @@ fn can_evaluate_if_else_expressions() {
 
     input.statements = statements;
     
-    let evaluation = evaluate_program(input);
+    let evaluation = evaluate(input);
 
     let expected = [ 
         Object::Integer(10),
@@ -483,6 +488,57 @@ fn can_evaluate_if_else_expressions() {
     ];
 
     for i in 0..7 {
+        
+        assert_eq!(evaluation[i], expected[i]);
+    }
+}
+
+#[test]
+fn can_evaluate_return_statements() {
+    let mut input = Program::new();
+
+    let statements = vec!
+    [
+        Statement::new(Variant::Return, Some(Expression::Integer(10))), 
+        Statement::new(Variant::If, 
+                        Some(Expression::If(
+                            Box::new(Expression::Infix(
+                                Box::new(Expression::Integer(10)), 
+                                Infix::GreaterThan, 
+                                Box::new(Expression::Integer(1)))), 
+                            BlockStatement::new_with_statements(
+                                Variant::LeftBrace, 
+                                vec![
+                                    Statement::new(Variant::If, 
+                                        Some(Expression::If(
+                                                Box::new(Expression::Infix(
+                                                    Box::new(Expression::Integer(10)), 
+                                                    Infix::GreaterThan, 
+                                                    Box::new(Expression::Integer(1)))), 
+                                        BlockStatement::new_with_statements(
+                                            Variant::LeftBrace, 
+                                            vec![ 
+                                                Statement::new(Variant::Return, Some(Expression::Integer(10)))
+                                            ]
+                                        )))),
+                                        Statement::new(Variant::Return, Some(Expression::Integer(1)))
+                                ]
+                            ),
+                            
+                        ))
+                    )
+    ];
+
+    input.statements = statements;
+    
+    let evaluation = evaluate(input);
+    println!("{:?}", evaluation);
+    let expected = [ 
+        Object::ReturnValue(Box::new(Object::Integer(10))),
+        Object::ReturnValue(Box::new(Object::Integer(10)))
+    ];
+
+    for i in 0..2 {
         
         assert_eq!(evaluation[i], expected[i]);
     }
