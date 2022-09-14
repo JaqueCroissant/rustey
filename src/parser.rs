@@ -23,6 +23,10 @@ impl Program {
     pub fn new() -> Program {
         return Program { statements: vec![] }
     }
+
+    pub fn new_with_statements(statements: Vec<Statement>) -> Program {
+        return Program { statements: statements }
+    }
 }
 
 pub struct Parser{

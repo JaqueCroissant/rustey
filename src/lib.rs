@@ -8,18 +8,18 @@ use lexer::Lexer;
 use parser::Parser;
 use eval::Object;
 
-//this is basically the REPL (Read, Eval, Print, Loop)
-
 pub fn run(input: String){
     let lexer = Lexer::new(input);
     let mut parser = Parser::new(lexer);
     let program = parser.parse_program();
 
+    println!("{:?}", program);
+
     if parser.errors.len() != 0 {
         print_errors(&parser.errors);
-        //return;
+        return;
     }
-    println!("{:?}", program);
+
     let evaluted_program = eval::evaluate(program);
     print_program(&evaluted_program);
 }

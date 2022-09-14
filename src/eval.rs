@@ -1,3 +1,4 @@
+use std::ops::Deref;
 use std::vec;
 
 use crate::parser::Program;
@@ -9,7 +10,8 @@ pub enum Object {
     Integer(i64),
     Bool(bool),
     Empty,
-    ReturnValue(Box<Object>)
+    ReturnValue(Box<Object>),
+    Error(String)
 }
 
 pub fn inspect(object: &Object) -> String {
@@ -18,6 +20,7 @@ pub fn inspect(object: &Object) -> String {
         Object::Integer(x) => x.to_string(),
         Object::Bool(x) => x.to_string(),
         Object::ReturnValue(x) => inspect(x),
+        Object::Error(x) => x.to_string(),
         _ => panic!("failed to inspect")
     };
 
@@ -57,19 +60,41 @@ fn evaluate_expression(expression: Expression) -> Object {
         
         Expression::Prefix(pfx, expr) => {
             let right = evaluate_expression(*expr);
+
+            if is_error(&right){
+                return right;
+            }
+
             return evaluate_prefix_expression(pfx, right)
         },
 
         Expression::Infix(left_expr, infix, right_expr) => {
             let left = evaluate_expression(*left_expr);
+            
+            if is_error(&left){
+                return left;
+            }
+            
             let right = evaluate_expression(*right_expr);
+            
+            if is_error(&right){
+                return right;
+            }
+            
             return evaluate_infix_expression(left, infix, right);
         },
 
         Expression::If(condition, consequence) => evaluate_if_else_expression(*condition, consequence, None),
         Expression::IfElse(condition, consequence, alternative) => evaluate_if_else_expression(*condition, consequence, Some(alternative)),
         
-        _ => panic!("{:?}", expression) 
+        _ => create_error(format!("unexpected expression: {:?}", expression))
+    }
+}
+
+fn is_error(object: &Object) -> bool {
+    match object {
+        Object::Error(_) => true,
+        _ => false
     }
 }
 
@@ -80,7 +105,8 @@ fn evaluate_block_statement(block: BlockStatement) -> Object {
         result = evaluate_statement(s);
 
         match result {
-            Object::ReturnValue(_) => return result,
+            Object::ReturnValue(_) |
+            Object::Error(_) => return result,
             _ => ()
         }
     }
@@ -109,11 +135,18 @@ fn is_truthy(object: Object) -> bool {
     }
 }
 
+fn create_error(message: String) -> Object{
+    Object::Error(message.to_lowercase())
+}
+
 fn evaluate_infix_expression(left: Object, infix: Infix, right: Object) -> Object {
     match (left, right) {
         (Object::Integer(x), Object::Integer(y)) => return evaluate_infix_integer_expression(x, infix, y),
         (Object::Bool(x), Object::Bool(y)) => return evaluate_infix_bool_expression(x, infix, y),
-        _ => panic!("infix expression not implemented yet")
+
+        (Object::Bool(x), Object::Integer(y)) => return create_error(format!("unknown operator: {:?} {:?} {:?}", x, infix, y)),
+        (Object::Integer(x), Object::Bool(y)) => return create_error(format!("unknown operator: {:?} {:?} {:?}", x, infix, y)), 
+        _ =>  return create_error(format!("invalid infix expression"))
     }
 }
 
@@ -121,7 +154,7 @@ fn evaluate_infix_bool_expression(left: bool, infix: Infix, right: bool) -> Obje
     match infix {
         Infix::Equals => Object::Bool(left == right),
         Infix::NotEqual => Object::Bool(left != right),
-        _ => panic!("unexpected bool expression")
+        x => return create_error(format!("unknown operator: {:?} {:?} {:?}", left, x, right))
     }
 }
 
@@ -152,7 +185,8 @@ fn evaluate_prefix_expression(prefix: Prefix, object: Object) -> Object {
 
         Prefix::Minus => match object {
             Object::Integer(x) => Object::Integer(-x),
-            _ => Object::Empty
+            Object::Bool(x) => create_error(format!("unknown operator: {:?} {:?}", prefix, x)),
+            x => return create_error(format!("unknown operator: {:?} {:?}", prefix, x))
         }
     };
 
@@ -532,14 +566,101 @@ fn can_evaluate_return_statements() {
     input.statements = statements;
     
     let evaluation = evaluate(input);
-    println!("{:?}", evaluation);
+    
     let expected = [ 
         Object::ReturnValue(Box::new(Object::Integer(10))),
         Object::ReturnValue(Box::new(Object::Integer(10)))
     ];
 
     for i in 0..2 {
-        
         assert_eq!(evaluation[i], expected[i]);
     }
+}
+
+#[test]
+fn can_generate_error_messages() {
+    let mut input = Program::new();
+
+    let statements = vec!
+    [
+        Statement::new(Variant::Identifier, Some(Expression::Identifier("foobar".to_string(), None))),
+        Statement::new(Variant::Integer, Some(Expression::Infix(Box::new(Expression::Integer(5)), Infix::Plus, Box::new(Expression::Bool(true))))),
+        Statement::new(Variant::Minus, Some(Expression::Prefix(Prefix::Minus, Box::new(Expression::Bool(true))))),
+        Statement::new(Variant::Bool, Some(Expression::Infix(Box::new(Expression::Bool(false)), Infix::Plus, Box::new(Expression::Bool(true))))),
+        Statement::new(
+            Variant::If, 
+            Some(Expression::If(
+                Box::new(Expression::Infix(
+                    Box::new(Expression::Integer(10)), 
+                    Infix::GreaterThan, 
+                    Box::new(Expression::Integer(1)))), 
+                BlockStatement::new_with_statements(
+                    Variant::LeftBrace, 
+                    vec![ 
+                        Statement::new(
+                            Variant::Bool, 
+                            Some(Expression::Infix(
+                                Box::new(Expression::Bool(false)), 
+                                Infix::Plus, 
+                                Box::new(Expression::Bool(true)))
+                            )
+                        )
+                    ]
+                ))
+            )
+        )
+    ];
+
+    input.statements = statements;
+    
+    let evaluation = evaluate(input);
+    
+    let expected = [
+        Object::Error("unexpected expression: identifier(\"foobar\", none)".to_string()), 
+        Object::Error("unknown operator: 5 plus true".to_string()),
+        Object::Error("unknown operator: minus true".to_string()),
+        Object::Error("unknown operator: false plus true".to_string()),
+        Object::Error("unknown operator: false plus true".to_string())
+    ];
+
+    for i in 0..5 {
+        assert_eq!(evaluation[i], expected[i]);
+    }
+}
+
+#[test]
+fn can_evaluate_let_statements() {
+
+    let programs = vec![
+        Program::new_with_statements(vec![
+            Statement::new(Variant::Let, Some(Expression::Identifier("a".to_string(), Some(Box::new(Expression::Integer(5)))))),
+            Statement::new(Variant::Identifier, Some(Expression::Identifier("a".to_string(), None))),
+        ]),
+        Program::new_with_statements(vec![
+            Statement::new(Variant::Let, Some(Expression::Identifier("a".to_string(), Some(Box::new(Expression::Infix(Box::new(Expression::Integer(5)), Infix::Multiply, Box::new(Expression::Integer(5)))))))),
+            Statement::new(Variant::Identifier, Some(Expression::Identifier("a".to_string(), None))),
+        ]),
+        Program::new_with_statements(vec![
+            Statement::new(Variant::Let, Some(Expression::Identifier("a".to_string(), Some(Box::new(Expression::Integer(5)))))),
+            Statement::new(Variant::Let, Some(Expression::Identifier("b".to_string(), Some(Box::new(Expression::Identifier("a".to_string(), None)))))),
+            Statement::new(Variant::Identifier, Some(Expression::Identifier("b".to_string(), None)))
+        ]),
+        Program::new_with_statements(vec![
+            Statement::new(Variant::Let, Some(Expression::Identifier("a".to_string(), Some(Box::new(Expression::Integer(5)))))),
+            Statement::new(Variant::Let, Some(Expression::Identifier("b".to_string(), Some(Box::new(Expression::Identifier("a".to_string(), None)))))),
+            Statement::new(Variant::Let, Some(Expression::Identifier("c".to_string(), Some(Box::new(Expression::Infix(Box::new(Expression::Infix(Box::new(Expression::Identifier("a".to_string(), None)), Infix::Plus, Box::new(Expression::Identifier("b".to_string(), None)))), Infix::Plus, Box::new(Expression::Identifier("c".to_string(), None)))))))),
+            Statement::new(Variant::Identifier, Some(Expression::Identifier("c".to_string(), None)))
+        ])
+    ];
+
+    let expected = vec![ 5, 25, 5, 15 ];
+    
+    for (i, el) in programs.into_iter().enumerate() {
+        
+        let evaluation = evaluate(el);
+    
+        assert_eq!(evaluation[0], Object::Integer(expected[i]));
+    }
+    
+        
 }
