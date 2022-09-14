@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::ops::Deref;
 use std::vec;
 
@@ -27,19 +28,22 @@ pub fn inspect(object: &Object) -> String {
     result
 }
 
-pub fn evaluate(program: Program) -> Vec<Object> {
+pub fn evaluate(program: Program, environment: &HashMap<String, Object>) -> Vec<Object> {
 
     let mut objects: Vec<Object> = Vec::new();
     for statement in program.statements {
-        objects.push(evaluate_statement(statement));
+        objects.push(evaluate_statement(statement, environment));
     }
 
     objects
 }
 
-fn evaluate_statement(statement: Statement) -> Object {
+fn evaluate_statement(statement: Statement, environment: &HashMap<String, Object>) -> Object {
+
+    // if statement.variant == Variant::Let
+
     let expr = match statement.expression {
-        Some(expr) => evaluate_expression(expr),
+        Some(expr) => evaluate_expression(expr, environment),
         None => panic!("expected an expression but got none")
     };
 
@@ -50,7 +54,7 @@ fn evaluate_statement(statement: Statement) -> Object {
     expr
 }
 
-fn evaluate_expression(expression: Expression) -> Object {
+fn evaluate_expression(expression: Expression, environment: &HashMap<String, Object>) -> Object {
     
     match expression {
         
@@ -59,7 +63,7 @@ fn evaluate_expression(expression: Expression) -> Object {
         Expression::Bool(x) => return Object::Bool(x),
         
         Expression::Prefix(pfx, expr) => {
-            let right = evaluate_expression(*expr);
+            let right = evaluate_expression(*expr, environment);
 
             if is_error(&right){
                 return right;
@@ -69,13 +73,13 @@ fn evaluate_expression(expression: Expression) -> Object {
         },
 
         Expression::Infix(left_expr, infix, right_expr) => {
-            let left = evaluate_expression(*left_expr);
+            let left = evaluate_expression(*left_expr, environment);
             
             if is_error(&left){
                 return left;
             }
             
-            let right = evaluate_expression(*right_expr);
+            let right = evaluate_expression(*right_expr, environment);
             
             if is_error(&right){
                 return right;
@@ -84,8 +88,9 @@ fn evaluate_expression(expression: Expression) -> Object {
             return evaluate_infix_expression(left, infix, right);
         },
 
-        Expression::If(condition, consequence) => evaluate_if_else_expression(*condition, consequence, None),
-        Expression::IfElse(condition, consequence, alternative) => evaluate_if_else_expression(*condition, consequence, Some(alternative)),
+        Expression::If(condition, consequence) => evaluate_if_else_expression(*condition, consequence, None, environment),
+        
+        Expression::IfElse(condition, consequence, alternative) => evaluate_if_else_expression(*condition, consequence, Some(alternative), environment),
         
         _ => create_error(format!("unexpected expression: {:?}", expression))
     }
@@ -98,11 +103,11 @@ fn is_error(object: &Object) -> bool {
     }
 }
 
-fn evaluate_block_statement(block: BlockStatement) -> Object {
+fn evaluate_block_statement(block: BlockStatement, environment: &HashMap<String, Object>) -> Object {
     let mut result = Object::Empty;
     
     for s in block.statements{
-        result = evaluate_statement(s);
+        result = evaluate_statement(s, environment);
 
         match result {
             Object::ReturnValue(_) |
@@ -114,14 +119,14 @@ fn evaluate_block_statement(block: BlockStatement) -> Object {
     result
 }
 
-fn evaluate_if_else_expression(condition: Expression, consequence: BlockStatement, alternative: Option<BlockStatement>) -> Object {
-    let condition = evaluate_expression(condition);
+fn evaluate_if_else_expression(condition: Expression, consequence: BlockStatement, alternative: Option<BlockStatement>, environment: &HashMap<String, Object>) -> Object {
+    let condition = evaluate_expression(condition, environment);
 
     if is_truthy(condition){
-        return evaluate_block_statement(consequence);   
+        return evaluate_block_statement(consequence, environment);   
     }
     else if alternative != None {
-        return evaluate_block_statement(alternative.unwrap())
+        return evaluate_block_statement(alternative.unwrap(), environment)
     }
     
     Object::Empty    
@@ -196,12 +201,13 @@ fn evaluate_prefix_expression(prefix: Prefix, object: Object) -> Object {
 #[cfg(test)]
 #[test]
 fn can_evaluate_integers() {
+    let environment: HashMap<String, Object> = HashMap::new();
     let mut input = Program::new();
     input.statements.push(Statement::new(Variant::Integer, Some(Expression::Integer(5))));
     input.statements.push(Statement::new(Variant::Integer, Some(Expression::Integer(-48))));
     input.statements.push(Statement::new(Variant::Integer, Some(Expression::Integer(232323))));
 
-    let evaluation = evaluate(input);
+    let evaluation = evaluate(input, &environment);
 
     let expected = [ 5, -48, 232323 ];
 
@@ -236,10 +242,11 @@ fn can_evaluate_bools() {
         Statement::new(Variant::LeftParentheses, Some(Expression::Infix(Box::new(Expression::Infix(Box::new(Expression::Integer(1)), Infix::GreaterThan, Box::new(Expression::Integer(2)))), Infix::Equals, Box::new(Expression::Bool(false)))))
     ];  
 
+    let environment: HashMap<String, Object> = HashMap::new();
     let mut input = Program::new();
     input.statements = statements;
 
-    let evaluation = evaluate(input);
+    let evaluation = evaluate(input, &environment);
 
     let expected = [ false, true, true, false, false, false, true, false, false, true, true, false, false, true ];
 
@@ -264,7 +271,8 @@ fn can_evaluate_bang_prefix() {
     input.statements.push(Statement::new(Variant::Bang, Some(Expression::Prefix(Prefix::Bang, Box::new(Expression::Prefix(Prefix::Bang, Box::new(Expression::Bool(false))))))));
     input.statements.push(Statement::new(Variant::Bang, Some(Expression::Prefix(Prefix::Bang, Box::new(Expression::Prefix(Prefix::Bang, Box::new(Expression::Integer(5))))))));
     
-    let evaluation = evaluate(input);
+    let environment: HashMap<String, Object> = HashMap::new();
+    let evaluation = evaluate(input, &environment);
 
     let expected = [ false, true, false, true, false, true ];
 
@@ -287,7 +295,8 @@ fn can_evaluate_minus_prefix() {
     input.statements.push(Statement::new(Variant::Minus, Some(Expression::Prefix(Prefix::Minus, Box::new(Expression::Integer(5))))));
     input.statements.push(Statement::new(Variant::Minus, Some(Expression::Prefix(Prefix::Minus, Box::new(Expression::Integer(10))))));
     
-    let evaluation = evaluate(input);
+    let environment: HashMap<String, Object> = HashMap::new();
+    let evaluation = evaluate(input, &environment);
 
     let expected = [ 5, 10, -5, -10 ];
 
@@ -380,7 +389,8 @@ fn can_evaluate_infix_expressions() {
 
     input.statements = statements;
     
-    let evaluation = evaluate(input);
+    let environment: HashMap<String, Object> = HashMap::new();
+    let evaluation = evaluate(input, &environment);
 
     let expected = [ 10, 32, 0, 100, 37 ];
 
@@ -509,7 +519,8 @@ fn can_evaluate_if_else_expressions() {
 
     input.statements = statements;
     
-    let evaluation = evaluate(input);
+    let environment: HashMap<String, Object> = HashMap::new();
+    let evaluation = evaluate(input, &environment);
 
     let expected = [ 
         Object::Integer(10),
@@ -565,7 +576,8 @@ fn can_evaluate_return_statements() {
 
     input.statements = statements;
     
-    let evaluation = evaluate(input);
+    let environment: HashMap<String, Object> = HashMap::new();
+    let evaluation = evaluate(input, &environment);
     
     let expected = [ 
         Object::ReturnValue(Box::new(Object::Integer(10))),
@@ -613,7 +625,8 @@ fn can_generate_error_messages() {
 
     input.statements = statements;
     
-    let evaluation = evaluate(input);
+    let environment: HashMap<String, Object> = HashMap::new();
+    let evaluation = evaluate(input, &environment);
     
     let expected = [
         Object::Error("unexpected expression: identifier(\"foobar\", none)".to_string()), 
@@ -657,7 +670,8 @@ fn can_evaluate_let_statements() {
     
     for (i, el) in programs.into_iter().enumerate() {
         
-        let evaluation = evaluate(el);
+        let environment: HashMap<String, Object> = HashMap::new();
+        let evaluation = evaluate(el, &environment);
     
         assert_eq!(evaluation[0], Object::Integer(expected[i]));
     }

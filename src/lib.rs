@@ -4,11 +4,13 @@ mod parser;
 mod ast;
 mod eval;
 
+use std::collections::HashMap;
 use lexer::Lexer;
 use parser::Parser;
 use eval::Object;
 
 pub fn run(input: String){
+    let environment: HashMap<String, Object> = HashMap::new();
     let lexer = Lexer::new(input);
     let mut parser = Parser::new(lexer);
     let program = parser.parse_program();
@@ -20,7 +22,7 @@ pub fn run(input: String){
         return;
     }
 
-    let evaluted_program = eval::evaluate(program);
+    let evaluted_program = eval::evaluate(program, &environment);
     print_program(&evaluted_program);
 }
 
