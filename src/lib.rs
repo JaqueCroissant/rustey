@@ -10,7 +10,7 @@ use parser::Parser;
 use eval::Object;
 
 pub fn run(input: String){
-    let environment: HashMap<String, Object> = HashMap::new();
+    let mut environment: HashMap<String, Object> = HashMap::new();
     let lexer = Lexer::new(input);
     let mut parser = Parser::new(lexer);
     let program = parser.parse_program();
@@ -22,7 +22,7 @@ pub fn run(input: String){
         return;
     }
 
-    let evaluted_program = eval::evaluate(program, &environment);
+    let evaluted_program = eval::evaluate(program, &mut environment);
     print_program(&evaluted_program);
 }
 

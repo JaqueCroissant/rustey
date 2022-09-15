@@ -1,12 +1,10 @@
 use std::collections::HashMap;
-use std::ops::Deref;
-use std::vec;
 
 use crate::parser::Program;
 use crate::ast::{Statement, Expression, Prefix, Infix, BlockStatement};
 use crate::token::Variant;
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Object {
     Integer(i64),
     Bool(bool),
@@ -22,13 +20,12 @@ pub fn inspect(object: &Object) -> String {
         Object::Bool(x) => x.to_string(),
         Object::ReturnValue(x) => inspect(x),
         Object::Error(x) => x.to_string(),
-        _ => panic!("failed to inspect")
     };
 
     result
 }
 
-pub fn evaluate(program: Program, environment: &HashMap<String, Object>) -> Vec<Object> {
+pub fn evaluate(program: Program, environment: &mut HashMap<String, Object>) -> Vec<Object> {
 
     let mut objects: Vec<Object> = Vec::new();
     for statement in program.statements {
@@ -38,29 +35,87 @@ pub fn evaluate(program: Program, environment: &HashMap<String, Object>) -> Vec<
     objects
 }
 
-fn evaluate_statement(statement: Statement, environment: &HashMap<String, Object>) -> Object {
+fn evaluate_statement(statement: Statement, environment: &mut HashMap<String, Object>) -> Object {
 
-    // if statement.variant == Variant::Let
-
-    let expr = match statement.expression {
-        Some(expr) => evaluate_expression(expr, environment),
-        None => panic!("expected an expression but got none")
+    let object = match statement.variant {
+        Variant::Let => parse_let_statement(statement.expression, environment),
+        _ => try_evaluate_expression(statement.expression, environment) 
     };
 
-    if statement.variant == Variant::Return{
-        return Object::ReturnValue(Box::new(expr))
+    if is_error(&object){
+        return object;
     }
 
-    expr
+    if statement.variant == Variant::Return{
+        return Object::ReturnValue(Box::new(object))
+    }
+
+    object
 }
 
-fn evaluate_expression(expression: Expression, environment: &HashMap<String, Object>) -> Object {
+fn parse_let_statement(expression: Option<Expression>, environment: &mut HashMap<String, Object>) -> Object {
+
+    if expression == None {
+        return create_error(format!("expected an expression but got none"));
+    }
+
+    let unwrapped_expr = expression.unwrap();
+
+    let result = match unwrapped_expr {
+        Expression::Identifier(name, value) => {
+            if value == None {
+                create_error(format!("expected a value for identifier {:?} but found none", name))
+            }
+            else{
+                let evaluated_value = evaluate_expression(*value.unwrap(), environment);
+
+                if is_error(&evaluated_value){
+                    return evaluated_value;    
+                }
+
+                match environment.insert(name.clone(), evaluated_value){
+                    Some(_) => return create_error(format!("cannot declare {:?} twice", name)),
+                    None => () 
+                }
+
+                let v = environment.get(&name).unwrap();
+                return v.clone();
+            }
+        },
+        _ => create_error(format!("expected an identifier but found {:?}", unwrapped_expr))
+    };
+
+    result
+}
+
+fn try_evaluate_expression(expression: Option<Expression>, environment: &mut HashMap<String, Object>) -> Object {
+    match expression {
+        Some(expr) => return evaluate_expression(expr, environment),
+        None => return create_error(format!("expected an expression but got none"))
+    }
+}
+
+fn evaluate_expression(expression: Expression, environment: &mut HashMap<String, Object>) -> Object {
     
     match expression {
         
         Expression::Integer(x) => return Object::Integer(x),
         
         Expression::Bool(x) => return Object::Bool(x),
+
+        Expression::Identifier(name, value) => {
+            match value {
+                Some(expr) => evaluate_expression(*expr, environment),
+                None => {
+                    let env_value = environment.get_mut(&name);
+
+                    match env_value {
+                        Some(x) => return x.clone(),
+                        None => return create_error(format!("no value associated with identifier {:?}", name)) 
+                    };
+                } 
+            }
+        }
         
         Expression::Prefix(pfx, expr) => {
             let right = evaluate_expression(*expr, environment);
@@ -103,7 +158,7 @@ fn is_error(object: &Object) -> bool {
     }
 }
 
-fn evaluate_block_statement(block: BlockStatement, environment: &HashMap<String, Object>) -> Object {
+fn evaluate_block_statement(block: BlockStatement, environment: &mut HashMap<String, Object>) -> Object {
     let mut result = Object::Empty;
     
     for s in block.statements{
@@ -119,7 +174,7 @@ fn evaluate_block_statement(block: BlockStatement, environment: &HashMap<String,
     result
 }
 
-fn evaluate_if_else_expression(condition: Expression, consequence: BlockStatement, alternative: Option<BlockStatement>, environment: &HashMap<String, Object>) -> Object {
+fn evaluate_if_else_expression(condition: Expression, consequence: BlockStatement, alternative: Option<BlockStatement>, environment: &mut HashMap<String, Object>) -> Object {
     let condition = evaluate_expression(condition, environment);
 
     if is_truthy(condition){
@@ -201,13 +256,13 @@ fn evaluate_prefix_expression(prefix: Prefix, object: Object) -> Object {
 #[cfg(test)]
 #[test]
 fn can_evaluate_integers() {
-    let environment: HashMap<String, Object> = HashMap::new();
+    let mut environment: HashMap<String, Object> = HashMap::new();
     let mut input = Program::new();
     input.statements.push(Statement::new(Variant::Integer, Some(Expression::Integer(5))));
     input.statements.push(Statement::new(Variant::Integer, Some(Expression::Integer(-48))));
     input.statements.push(Statement::new(Variant::Integer, Some(Expression::Integer(232323))));
 
-    let evaluation = evaluate(input, &environment);
+    let evaluation = evaluate(input, &mut environment);
 
     let expected = [ 5, -48, 232323 ];
 
@@ -242,11 +297,11 @@ fn can_evaluate_bools() {
         Statement::new(Variant::LeftParentheses, Some(Expression::Infix(Box::new(Expression::Infix(Box::new(Expression::Integer(1)), Infix::GreaterThan, Box::new(Expression::Integer(2)))), Infix::Equals, Box::new(Expression::Bool(false)))))
     ];  
 
-    let environment: HashMap<String, Object> = HashMap::new();
+    let mut environment: HashMap<String, Object> = HashMap::new();
     let mut input = Program::new();
     input.statements = statements;
 
-    let evaluation = evaluate(input, &environment);
+    let evaluation = evaluate(input, &mut environment);
 
     let expected = [ false, true, true, false, false, false, true, false, false, true, true, false, false, true ];
 
@@ -271,8 +326,8 @@ fn can_evaluate_bang_prefix() {
     input.statements.push(Statement::new(Variant::Bang, Some(Expression::Prefix(Prefix::Bang, Box::new(Expression::Prefix(Prefix::Bang, Box::new(Expression::Bool(false))))))));
     input.statements.push(Statement::new(Variant::Bang, Some(Expression::Prefix(Prefix::Bang, Box::new(Expression::Prefix(Prefix::Bang, Box::new(Expression::Integer(5))))))));
     
-    let environment: HashMap<String, Object> = HashMap::new();
-    let evaluation = evaluate(input, &environment);
+    let mut environment: HashMap<String, Object> = HashMap::new();
+    let evaluation = evaluate(input, &mut environment);
 
     let expected = [ false, true, false, true, false, true ];
 
@@ -295,8 +350,8 @@ fn can_evaluate_minus_prefix() {
     input.statements.push(Statement::new(Variant::Minus, Some(Expression::Prefix(Prefix::Minus, Box::new(Expression::Integer(5))))));
     input.statements.push(Statement::new(Variant::Minus, Some(Expression::Prefix(Prefix::Minus, Box::new(Expression::Integer(10))))));
     
-    let environment: HashMap<String, Object> = HashMap::new();
-    let evaluation = evaluate(input, &environment);
+    let mut environment: HashMap<String, Object> = HashMap::new();
+    let evaluation = evaluate(input, &mut environment);
 
     let expected = [ 5, 10, -5, -10 ];
 
@@ -389,8 +444,8 @@ fn can_evaluate_infix_expressions() {
 
     input.statements = statements;
     
-    let environment: HashMap<String, Object> = HashMap::new();
-    let evaluation = evaluate(input, &environment);
+    let mut environment: HashMap<String, Object> = HashMap::new();
+    let evaluation = evaluate(input, &mut environment);
 
     let expected = [ 10, 32, 0, 100, 37 ];
 
@@ -519,8 +574,8 @@ fn can_evaluate_if_else_expressions() {
 
     input.statements = statements;
     
-    let environment: HashMap<String, Object> = HashMap::new();
-    let evaluation = evaluate(input, &environment);
+    let mut environment: HashMap<String, Object> = HashMap::new();
+    let evaluation = evaluate(input, &mut environment);
 
     let expected = [ 
         Object::Integer(10),
@@ -576,8 +631,8 @@ fn can_evaluate_return_statements() {
 
     input.statements = statements;
     
-    let environment: HashMap<String, Object> = HashMap::new();
-    let evaluation = evaluate(input, &environment);
+    let mut environment: HashMap<String, Object> = HashMap::new();
+    let evaluation = evaluate(input, &mut environment);
     
     let expected = [ 
         Object::ReturnValue(Box::new(Object::Integer(10))),
@@ -625,11 +680,11 @@ fn can_generate_error_messages() {
 
     input.statements = statements;
     
-    let environment: HashMap<String, Object> = HashMap::new();
-    let evaluation = evaluate(input, &environment);
+    let mut environment: HashMap<String, Object> = HashMap::new();
+    let evaluation = evaluate(input, &mut environment);
     
     let expected = [
-        Object::Error("unexpected expression: identifier(\"foobar\", none)".to_string()), 
+        Object::Error("no value associated with identifier \"foobar\"".to_string()), 
         Object::Error("unknown operator: 5 plus true".to_string()),
         Object::Error("unknown operator: minus true".to_string()),
         Object::Error("unknown operator: false plus true".to_string()),
@@ -661,7 +716,7 @@ fn can_evaluate_let_statements() {
         Program::new_with_statements(vec![
             Statement::new(Variant::Let, Some(Expression::Identifier("a".to_string(), Some(Box::new(Expression::Integer(5)))))),
             Statement::new(Variant::Let, Some(Expression::Identifier("b".to_string(), Some(Box::new(Expression::Identifier("a".to_string(), None)))))),
-            Statement::new(Variant::Let, Some(Expression::Identifier("c".to_string(), Some(Box::new(Expression::Infix(Box::new(Expression::Infix(Box::new(Expression::Identifier("a".to_string(), None)), Infix::Plus, Box::new(Expression::Identifier("b".to_string(), None)))), Infix::Plus, Box::new(Expression::Identifier("c".to_string(), None)))))))),
+            Statement::new(Variant::Let, Some(Expression::Identifier("c".to_string(), Some(Box::new(Expression::Infix(Box::new(Expression::Infix(Box::new(Expression::Identifier("a".to_string(), None)), Infix::Plus, Box::new(Expression::Identifier("b".to_string(), None)))), Infix::Plus, Box::new(Expression::Integer(5)))))))),
             Statement::new(Variant::Identifier, Some(Expression::Identifier("c".to_string(), None)))
         ])
     ];
@@ -670,11 +725,10 @@ fn can_evaluate_let_statements() {
     
     for (i, el) in programs.into_iter().enumerate() {
         
-        let environment: HashMap<String, Object> = HashMap::new();
-        let evaluation = evaluate(el, &environment);
-    
-        assert_eq!(evaluation[0], Object::Integer(expected[i]));
-    }
-    
+        let mut environment: HashMap<String, Object> = HashMap::new();
         
+        let evaluation = evaluate(el, &mut environment);
+        
+        assert_eq!(*evaluation.last().unwrap(), Object::Integer(expected[i]));
+    }
 }
