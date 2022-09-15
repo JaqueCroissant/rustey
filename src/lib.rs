@@ -3,19 +3,19 @@ mod token;
 mod parser;
 mod ast;
 mod eval;
+mod environment;
 
 use std::collections::HashMap;
 use lexer::Lexer;
 use parser::Parser;
 use eval::Object;
+use environment::Environment;
 
 pub fn run(input: String){
-    let mut environment: HashMap<String, Object> = HashMap::new();
+    let mut environment = Environment::new();
     let lexer = Lexer::new(input);
     let mut parser = Parser::new(lexer);
     let program = parser.parse_program();
-
-    println!("{:?}", program);
 
     if parser.errors.len() != 0 {
         print_errors(&parser.errors);

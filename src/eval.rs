@@ -3,9 +3,11 @@ use std::collections::HashMap;
 use crate::parser::Program;
 use crate::ast::{Statement, Expression, Prefix, Infix, BlockStatement};
 use crate::token::Variant;
+use crate::environment::Environment;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Object {
+    Function(Vec<Expression>, BlockStatement, Environment),
     Integer(i64),
     Bool(bool),
     Empty,
@@ -20,12 +22,13 @@ pub fn inspect(object: &Object) -> String {
         Object::Bool(x) => x.to_string(),
         Object::ReturnValue(x) => inspect(x),
         Object::Error(x) => x.to_string(),
+        Object::Function(_, _, _) => panic!("not implemented")
     };
 
     result
 }
 
-pub fn evaluate(program: Program, environment: &mut HashMap<String, Object>) -> Vec<Object> {
+pub fn evaluate(program: Program, environment: &mut Environment) -> Vec<Object> {
 
     let mut objects: Vec<Object> = Vec::new();
     for statement in program.statements {
@@ -35,7 +38,7 @@ pub fn evaluate(program: Program, environment: &mut HashMap<String, Object>) -> 
     objects
 }
 
-fn evaluate_statement(statement: Statement, environment: &mut HashMap<String, Object>) -> Object {
+fn evaluate_statement(statement: Statement, environment: &mut Environment) -> Object {
 
     let object = match statement.variant {
         Variant::Let => parse_let_statement(statement.expression, environment),
@@ -53,7 +56,7 @@ fn evaluate_statement(statement: Statement, environment: &mut HashMap<String, Ob
     object
 }
 
-fn parse_let_statement(expression: Option<Expression>, environment: &mut HashMap<String, Object>) -> Object {
+fn parse_let_statement(expression: Option<Expression>, environment: &mut Environment) -> Object {
 
     if expression == None {
         return create_error(format!("expected an expression but got none"));
@@ -73,12 +76,12 @@ fn parse_let_statement(expression: Option<Expression>, environment: &mut HashMap
                     return evaluated_value;    
                 }
 
-                match environment.insert(name.clone(), evaluated_value){
-                    Some(_) => return create_error(format!("cannot declare {:?} twice", name)),
-                    None => () 
+                match environment.set(name.clone(), evaluated_value){
+                    Err(_) => return create_error(format!("cannot declare {:?} twice", name)),
+                    Ok(_) => () 
                 }
 
-                let v = environment.get(&name).unwrap();
+                let v = environment.get(name).unwrap();
                 return v.clone();
             }
         },
@@ -88,14 +91,14 @@ fn parse_let_statement(expression: Option<Expression>, environment: &mut HashMap
     result
 }
 
-fn try_evaluate_expression(expression: Option<Expression>, environment: &mut HashMap<String, Object>) -> Object {
+fn try_evaluate_expression(expression: Option<Expression>, environment: &mut Environment) -> Object {
     match expression {
         Some(expr) => return evaluate_expression(expr, environment),
         None => return create_error(format!("expected an expression but got none"))
     }
 }
 
-fn evaluate_expression(expression: Expression, environment: &mut HashMap<String, Object>) -> Object {
+fn evaluate_expression(expression: Expression, environment: &mut Environment) -> Object {
     
     match expression {
         
@@ -107,7 +110,7 @@ fn evaluate_expression(expression: Expression, environment: &mut HashMap<String,
             match value {
                 Some(expr) => evaluate_expression(*expr, environment),
                 None => {
-                    let env_value = environment.get_mut(&name);
+                    let env_value = environment.get(name.clone());
 
                     match env_value {
                         Some(x) => return x.clone(),
@@ -158,7 +161,7 @@ fn is_error(object: &Object) -> bool {
     }
 }
 
-fn evaluate_block_statement(block: BlockStatement, environment: &mut HashMap<String, Object>) -> Object {
+fn evaluate_block_statement(block: BlockStatement, environment: &mut Environment) -> Object {
     let mut result = Object::Empty;
     
     for s in block.statements{
@@ -174,7 +177,7 @@ fn evaluate_block_statement(block: BlockStatement, environment: &mut HashMap<Str
     result
 }
 
-fn evaluate_if_else_expression(condition: Expression, consequence: BlockStatement, alternative: Option<BlockStatement>, environment: &mut HashMap<String, Object>) -> Object {
+fn evaluate_if_else_expression(condition: Expression, consequence: BlockStatement, alternative: Option<BlockStatement>, environment: &mut Environment) -> Object {
     let condition = evaluate_expression(condition, environment);
 
     if is_truthy(condition){
@@ -256,7 +259,7 @@ fn evaluate_prefix_expression(prefix: Prefix, object: Object) -> Object {
 #[cfg(test)]
 #[test]
 fn can_evaluate_integers() {
-    let mut environment: HashMap<String, Object> = HashMap::new();
+    let mut environment = Environment::new();
     let mut input = Program::new();
     input.statements.push(Statement::new(Variant::Integer, Some(Expression::Integer(5))));
     input.statements.push(Statement::new(Variant::Integer, Some(Expression::Integer(-48))));
@@ -297,7 +300,7 @@ fn can_evaluate_bools() {
         Statement::new(Variant::LeftParentheses, Some(Expression::Infix(Box::new(Expression::Infix(Box::new(Expression::Integer(1)), Infix::GreaterThan, Box::new(Expression::Integer(2)))), Infix::Equals, Box::new(Expression::Bool(false)))))
     ];  
 
-    let mut environment: HashMap<String, Object> = HashMap::new();
+    let mut environment = Environment::new();
     let mut input = Program::new();
     input.statements = statements;
 
@@ -326,7 +329,7 @@ fn can_evaluate_bang_prefix() {
     input.statements.push(Statement::new(Variant::Bang, Some(Expression::Prefix(Prefix::Bang, Box::new(Expression::Prefix(Prefix::Bang, Box::new(Expression::Bool(false))))))));
     input.statements.push(Statement::new(Variant::Bang, Some(Expression::Prefix(Prefix::Bang, Box::new(Expression::Prefix(Prefix::Bang, Box::new(Expression::Integer(5))))))));
     
-    let mut environment: HashMap<String, Object> = HashMap::new();
+    let mut environment = Environment::new();
     let evaluation = evaluate(input, &mut environment);
 
     let expected = [ false, true, false, true, false, true ];
@@ -350,7 +353,7 @@ fn can_evaluate_minus_prefix() {
     input.statements.push(Statement::new(Variant::Minus, Some(Expression::Prefix(Prefix::Minus, Box::new(Expression::Integer(5))))));
     input.statements.push(Statement::new(Variant::Minus, Some(Expression::Prefix(Prefix::Minus, Box::new(Expression::Integer(10))))));
     
-    let mut environment: HashMap<String, Object> = HashMap::new();
+    let mut environment = Environment::new();
     let evaluation = evaluate(input, &mut environment);
 
     let expected = [ 5, 10, -5, -10 ];
@@ -444,7 +447,7 @@ fn can_evaluate_infix_expressions() {
 
     input.statements = statements;
     
-    let mut environment: HashMap<String, Object> = HashMap::new();
+    let mut environment = Environment::new();
     let evaluation = evaluate(input, &mut environment);
 
     let expected = [ 10, 32, 0, 100, 37 ];
@@ -574,7 +577,7 @@ fn can_evaluate_if_else_expressions() {
 
     input.statements = statements;
     
-    let mut environment: HashMap<String, Object> = HashMap::new();
+    let mut environment = Environment::new();
     let evaluation = evaluate(input, &mut environment);
 
     let expected = [ 
@@ -631,7 +634,7 @@ fn can_evaluate_return_statements() {
 
     input.statements = statements;
     
-    let mut environment: HashMap<String, Object> = HashMap::new();
+    let mut environment = Environment::new();
     let evaluation = evaluate(input, &mut environment);
     
     let expected = [ 
@@ -680,7 +683,7 @@ fn can_generate_error_messages() {
 
     input.statements = statements;
     
-    let mut environment: HashMap<String, Object> = HashMap::new();
+    let mut environment = Environment::new();
     let evaluation = evaluate(input, &mut environment);
     
     let expected = [
@@ -725,7 +728,7 @@ fn can_evaluate_let_statements() {
     
     for (i, el) in programs.into_iter().enumerate() {
         
-        let mut environment: HashMap<String, Object> = HashMap::new();
+        let mut environment = Environment::new();
         
         let evaluation = evaluate(el, &mut environment);
         
