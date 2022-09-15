@@ -5,14 +5,14 @@ mod ast;
 mod eval;
 mod environment;
 
-use std::collections::HashMap;
 use lexer::Lexer;
 use parser::Parser;
 use eval::Object;
 use environment::Environment;
+use std::rc::Rc;
 
 pub fn run(input: String){
-    let mut environment = Environment::new();
+    let environment = Environment::new();
     let lexer = Lexer::new(input);
     let mut parser = Parser::new(lexer);
     let program = parser.parse_program();
@@ -22,7 +22,7 @@ pub fn run(input: String){
         return;
     }
 
-    let evaluted_program = eval::evaluate(program, &mut environment);
+    let evaluted_program = eval::evaluate(program, &Rc::new(environment));
     print_program(&evaluted_program);
 }
 

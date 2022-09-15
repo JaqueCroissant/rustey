@@ -1,13 +1,12 @@
-use std::collections::HashMap;
-
 use crate::parser::Program;
 use crate::ast::{Statement, Expression, Prefix, Infix, BlockStatement};
 use crate::token::Variant;
 use crate::environment::Environment;
+use std::rc::Rc;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Object {
-    Function(Vec<Expression>, BlockStatement, Environment),
+    Function(Vec<Expression>, BlockStatement, Rc<Environment>),
     Integer(i64),
     Bool(bool),
     Empty,
@@ -22,23 +21,25 @@ pub fn inspect(object: &Object) -> String {
         Object::Bool(x) => x.to_string(),
         Object::ReturnValue(x) => inspect(x),
         Object::Error(x) => x.to_string(),
-        Object::Function(_, _, _) => panic!("not implemented")
+        Object::Function(args, body, _) => {
+            format!("function args: {:?}, body: {:?}", args, body)
+        }
     };
 
     result
 }
 
-pub fn evaluate(program: Program, environment: &mut Environment) -> Vec<Object> {
+pub fn evaluate(program: Program, environment: &Rc<Environment>) -> Vec<Object> {
 
     let mut objects: Vec<Object> = Vec::new();
     for statement in program.statements {
-        objects.push(evaluate_statement(statement, environment));
+        objects.push(evaluate_statement(statement, Rc::clone(environment)));
     }
 
     objects
 }
 
-fn evaluate_statement(statement: Statement, environment: &mut Environment) -> Object {
+fn evaluate_statement(statement: Statement, environment: Rc<Environment>) -> Object {
 
     let object = match statement.variant {
         Variant::Let => parse_let_statement(statement.expression, environment),
@@ -56,7 +57,7 @@ fn evaluate_statement(statement: Statement, environment: &mut Environment) -> Ob
     object
 }
 
-fn parse_let_statement(expression: Option<Expression>, environment: &mut Environment) -> Object {
+fn parse_let_statement(expression: Option<Expression>, environment: Rc<Environment>) -> Object {
 
     if expression == None {
         return create_error(format!("expected an expression but got none"));
@@ -76,7 +77,7 @@ fn parse_let_statement(expression: Option<Expression>, environment: &mut Environ
                     return evaluated_value;    
                 }
 
-                match environment.set(name.clone(), evaluated_value){
+                match environment.set(name.clone(), evaluated_value){ // https://stackoverflow.com/questions/58599539/cannot-borrow-in-a-rc-as-mutable
                     Err(_) => return create_error(format!("cannot declare {:?} twice", name)),
                     Ok(_) => () 
                 }
@@ -91,20 +92,33 @@ fn parse_let_statement(expression: Option<Expression>, environment: &mut Environ
     result
 }
 
-fn try_evaluate_expression(expression: Option<Expression>, environment: &mut Environment) -> Object {
+fn try_evaluate_expression(expression: Option<Expression>, environment: Rc<Environment>) -> Object {
     match expression {
         Some(expr) => return evaluate_expression(expr, environment),
         None => return create_error(format!("expected an expression but got none"))
     }
 }
 
-fn evaluate_expression(expression: Expression, environment: &mut Environment) -> Object {
+fn evaluate_expression(expression: Expression, environment: Rc<Environment>) -> Object {
     
     match expression {
-        
+
+        Expression::Bool(x) => return Object::Bool(x),
+
+        Expression::Function(args, body) => {
+            
+            for a in &args{
+                match a {
+                    Expression::Identifier(_, _) => (),
+                    _ => return create_error(format!("found invalid arg in function: {:?}", a))
+                }
+            }
+
+            return Object::Function(args, body, environment);
+        },
+
         Expression::Integer(x) => return Object::Integer(x),
         
-        Expression::Bool(x) => return Object::Bool(x),
 
         Expression::Identifier(name, value) => {
             match value {
@@ -161,7 +175,7 @@ fn is_error(object: &Object) -> bool {
     }
 }
 
-fn evaluate_block_statement(block: BlockStatement, environment: &mut Environment) -> Object {
+fn evaluate_block_statement(block: BlockStatement, environment: Rc<Environment>) -> Object {
     let mut result = Object::Empty;
     
     for s in block.statements{
@@ -177,7 +191,7 @@ fn evaluate_block_statement(block: BlockStatement, environment: &mut Environment
     result
 }
 
-fn evaluate_if_else_expression(condition: Expression, consequence: BlockStatement, alternative: Option<BlockStatement>, environment: &mut Environment) -> Object {
+fn evaluate_if_else_expression(condition: Expression, consequence: BlockStatement, alternative: Option<BlockStatement>, environment: Rc<Environment>) -> Object {
     let condition = evaluate_expression(condition, environment);
 
     if is_truthy(condition){
@@ -265,7 +279,7 @@ fn can_evaluate_integers() {
     input.statements.push(Statement::new(Variant::Integer, Some(Expression::Integer(-48))));
     input.statements.push(Statement::new(Variant::Integer, Some(Expression::Integer(232323))));
 
-    let evaluation = evaluate(input, &mut environment);
+    let evaluation = evaluate(input, Rc::new(environment));
 
     let expected = [ 5, -48, 232323 ];
 
@@ -304,7 +318,7 @@ fn can_evaluate_bools() {
     let mut input = Program::new();
     input.statements = statements;
 
-    let evaluation = evaluate(input, &mut environment);
+    let evaluation = evaluate(input, Rc::new(environment));
 
     let expected = [ false, true, true, false, false, false, true, false, false, true, true, false, false, true ];
 
@@ -330,7 +344,7 @@ fn can_evaluate_bang_prefix() {
     input.statements.push(Statement::new(Variant::Bang, Some(Expression::Prefix(Prefix::Bang, Box::new(Expression::Prefix(Prefix::Bang, Box::new(Expression::Integer(5))))))));
     
     let mut environment = Environment::new();
-    let evaluation = evaluate(input, &mut environment);
+    let evaluation = evaluate(input, Rc::new(environment));
 
     let expected = [ false, true, false, true, false, true ];
 
@@ -354,7 +368,7 @@ fn can_evaluate_minus_prefix() {
     input.statements.push(Statement::new(Variant::Minus, Some(Expression::Prefix(Prefix::Minus, Box::new(Expression::Integer(10))))));
     
     let mut environment = Environment::new();
-    let evaluation = evaluate(input, &mut environment);
+    let evaluation = evaluate(input, Rc::new(environment));
 
     let expected = [ 5, 10, -5, -10 ];
 
@@ -448,7 +462,7 @@ fn can_evaluate_infix_expressions() {
     input.statements = statements;
     
     let mut environment = Environment::new();
-    let evaluation = evaluate(input, &mut environment);
+    let evaluation = evaluate(input, Rc::new(environment));
 
     let expected = [ 10, 32, 0, 100, 37 ];
 
@@ -578,7 +592,7 @@ fn can_evaluate_if_else_expressions() {
     input.statements = statements;
     
     let mut environment = Environment::new();
-    let evaluation = evaluate(input, &mut environment);
+    let evaluation = evaluate(input, Rc::new(environment));
 
     let expected = [ 
         Object::Integer(10),
@@ -635,7 +649,7 @@ fn can_evaluate_return_statements() {
     input.statements = statements;
     
     let mut environment = Environment::new();
-    let evaluation = evaluate(input, &mut environment);
+    let evaluation = evaluate(input, Rc::new(environment));
     
     let expected = [ 
         Object::ReturnValue(Box::new(Object::Integer(10))),
@@ -684,7 +698,7 @@ fn can_generate_error_messages() {
     input.statements = statements;
     
     let mut environment = Environment::new();
-    let evaluation = evaluate(input, &mut environment);
+    let evaluation = evaluate(input, Rc::new(environment));
     
     let expected = [
         Object::Error("no value associated with identifier \"foobar\"".to_string()), 
@@ -730,7 +744,7 @@ fn can_evaluate_let_statements() {
         
         let mut environment = Environment::new();
         
-        let evaluation = evaluate(el, &mut environment);
+        let evaluation = evaluate(el, Rc::new(environment));
         
         assert_eq!(*evaluation.last().unwrap(), Object::Integer(expected[i]));
     }
