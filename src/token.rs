@@ -25,7 +25,8 @@ pub enum Variant {
     Else,
     Return,
     Equals,
-    NotEqual
+    NotEqual,
+    String
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]

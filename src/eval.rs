@@ -2,8 +2,7 @@ use crate::parser::Program;
 use crate::ast::{Statement, Expression, Prefix, Infix, BlockStatement};
 use crate::token::Variant;
 use crate::environment::Environment;
-use std::ops::Deref;
-use std::rc::{Rc, self};
+use std::rc::Rc;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Object {

@@ -32,6 +32,7 @@ impl Lexer{
         let result = match self.current_char.unwrap() {
             x if self.is_identifier(x) => return self.read_identifier(),
             x if x.is_numeric() => return self.read_integer(),
+            '"' => self.read_string(),
             '=' => self.assign_or_equals(),
             '!' => self.bang_or_not_equal(),
             '+' => Token::new(Variant::Plus),
@@ -52,6 +53,26 @@ impl Lexer{
         self.read_char();
 
         result
+    }
+
+    fn read_string(&mut self) -> Token {
+
+        let position = self.position + 1;
+
+        loop {
+            self.read_char();
+
+            match self.current_char {
+                None => break,
+                Some(x) => {
+                    if x == '"' {
+                        break;
+                    }
+                } 
+            }
+        }
+
+        Token::new_with_value(Variant::String, &self.input[position..self.position])
     }
 
     fn assign_or_equals(&mut self) -> Token {
@@ -201,6 +222,8 @@ fn can_parse_simple_program() {
 
     10 == 10;
     10 != 9;
+    \"foobar\"
+    \"foo bar\"
     ";
 
     let input = String::from(program);
@@ -280,6 +303,8 @@ fn can_parse_simple_program() {
         Token::new(Variant::NotEqual),
         Token::new_with_value(Variant::Integer, "9"),
         Token::new(Variant::Semicolon),
+        Token::new_with_value(Variant::String, "foobar"),
+        Token::new_with_value(Variant::String, "foo bar"),
         Token::new(Variant::EndOfFile)
         ];
 
