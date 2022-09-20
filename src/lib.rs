@@ -2,22 +2,29 @@ mod lexer;
 mod token;
 mod parser;
 mod ast;
+mod eval;
+mod environment;
 
 use lexer::Lexer;
-use parser::{Parser, Program};
-
-//this is basically the REPL (Read, Eval, Print, Loop)
+use parser::Parser;
+use eval::Object;
+use environment::Environment;
+use std::rc::Rc;
 
 pub fn run(input: String){
+    let environment = Environment::new();
     let lexer = Lexer::new(input);
     let mut parser = Parser::new(lexer);
     let program = parser.parse_program();
 
     if parser.errors.len() != 0 {
         print_errors(&parser.errors);
+        return;
     }
 
-    print_program(&program);
+    println!("{:?}", program);
+    let evaluted_program = eval::evaluate(program, &mut Rc::new(environment));
+    print_program(&evaluted_program);
 }
 
 fn print_errors(errors: &Vec<String>){
@@ -28,8 +35,8 @@ fn print_errors(errors: &Vec<String>){
     println!("");
 }
 
-fn print_program(program: &Program) {
-    for statement in program.statements.clone() {
-        println!("{:?}", statement);   
+fn print_program(objects: &Vec<Object>) {
+    for o in objects {
+        println!("{:?}", eval::inspect(o));   
     }
 }
