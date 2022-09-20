@@ -1,9 +1,11 @@
+use std::rc::Rc;
+
 use crate::eval::Object;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Environment {
     store: Vec<(String, Object)>,
-    outer: Option<Box<Environment>>
+    outer: Option<Rc<Environment>>
 }
 
 impl Environment{
@@ -11,8 +13,8 @@ impl Environment{
         Environment { store: vec![], outer: None }
     }
 
-    pub fn new_enclosed(outer: Environment) -> Environment{
-        Environment { store: vec![], outer: Some(Box::new(outer)) }
+    pub fn new_enclosed(outer: Rc<Environment>) -> Environment{
+        Environment { store: vec![], outer: Some(outer) }
     }
 
     pub fn set(&mut self, name: String, object: Object) -> Result<(), String> {
@@ -24,14 +26,18 @@ impl Environment{
         return Ok(());
     }
 
-    pub fn get(&mut self, name: String) -> Option<Object> {
+    pub fn get(&self, name: &String) -> Option<Object> {
         
-        match self.store.iter().find(|&(x, _)| x == &name){
+        match self.store.iter().find(|&(x, _)| &x == &name){
             Some(x) => return Some(x.1.clone()),
             None => {
-                match self.outer {
+                match self.outer.clone() {
                     None => return None,
-                    Some(_) => return self.outer.clone().unwrap().get(name)
+                    Some(x) => {
+                        let env = Rc::clone(&x);
+                        let obj = env.get(name);
+                        return obj.clone();
+                    }
                 }
             }
         }

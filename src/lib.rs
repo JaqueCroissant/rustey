@@ -22,7 +22,8 @@ pub fn run(input: String){
         return;
     }
 
-    let evaluted_program = eval::evaluate(program, &Rc::new(environment));
+    println!("{:?}", program);
+    let evaluted_program = eval::evaluate(program, &mut Rc::new(environment));
     print_program(&evaluted_program);
 }
 

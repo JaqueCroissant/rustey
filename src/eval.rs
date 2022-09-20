@@ -2,7 +2,8 @@ use crate::parser::Program;
 use crate::ast::{Statement, Expression, Prefix, Infix, BlockStatement};
 use crate::token::Variant;
 use crate::environment::Environment;
-use std::rc::Rc;
+use std::ops::Deref;
+use std::rc::{Rc, self};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Object {
@@ -29,17 +30,17 @@ pub fn inspect(object: &Object) -> String {
     result
 }
 
-pub fn evaluate(program: Program, environment: &Rc<Environment>) -> Vec<Object> {
+pub fn evaluate(program: Program, environment: &mut Rc<Environment>) -> Vec<Object> {
 
     let mut objects: Vec<Object> = Vec::new();
     for statement in program.statements {
-        objects.push(evaluate_statement(statement, Rc::clone(environment)));
+        objects.push(evaluate_statement(statement, environment));
     }
 
     objects
 }
 
-fn evaluate_statement(statement: Statement, environment: Rc<Environment>) -> Object {
+fn evaluate_statement(statement: Statement, environment:&mut Rc<Environment>) -> Object {
 
     let object = match statement.variant {
         Variant::Let => parse_let_statement(statement.expression, environment),
@@ -57,7 +58,7 @@ fn evaluate_statement(statement: Statement, environment: Rc<Environment>) -> Obj
     object
 }
 
-fn parse_let_statement(expression: Option<Expression>, environment: Rc<Environment>) -> Object {
+fn parse_let_statement(expression: Option<Expression>, environment:&mut Rc<Environment>) -> Object {
 
     if expression == None {
         return create_error(format!("expected an expression but got none"));
@@ -77,12 +78,14 @@ fn parse_let_statement(expression: Option<Expression>, environment: Rc<Environme
                     return evaluated_value;    
                 }
 
-                match environment.set(name.clone(), evaluated_value){ // https://stackoverflow.com/questions/58599539/cannot-borrow-in-a-rc-as-mutable
+                let mut_env = Rc::make_mut(environment);
+
+                match mut_env.set(name.clone(), evaluated_value) {
                     Err(_) => return create_error(format!("cannot declare {:?} twice", name)),
                     Ok(_) => () 
                 }
 
-                let v = environment.get(name).unwrap();
+                let v = mut_env.get(&name).unwrap();
                 return v.clone();
             }
         },
@@ -92,18 +95,89 @@ fn parse_let_statement(expression: Option<Expression>, environment: Rc<Environme
     result
 }
 
-fn try_evaluate_expression(expression: Option<Expression>, environment: Rc<Environment>) -> Object {
+fn try_evaluate_expression(expression: Option<Expression>, environment: &mut Rc<Environment>) -> Object {
     match expression {
         Some(expr) => return evaluate_expression(expr, environment),
         None => return create_error(format!("expected an expression but got none"))
     }
 }
 
-fn evaluate_expression(expression: Expression, environment: Rc<Environment>) -> Object {
+fn evaluate_expressions(args: Vec<Expression>, environment: &mut Rc<Environment>) -> Vec<Object> {
+    let mut results = vec![];
+
+    for a in args {
+        let evaluated_arg = evaluate_expression(a, environment);
+
+        if is_error(&evaluated_arg) {
+            return vec![evaluated_arg];
+        }
+
+        results.push(evaluated_arg);
+    }
+
+    results
+}
+
+fn apply_function(function: Object, args: Vec<Object>) -> Object{
+    match &function {
+        Object::Function(params, body, env) => {
+            let mut mutable_env = Rc::clone(env);
+            let extended_env = extend_function_environment(params.clone(), args, &mut mutable_env);
+            let evaluated_function = evaluate_block_statement(body.clone(), &mut Rc::new(extended_env));
+            
+            match evaluated_function {
+                Object::ReturnValue(x) => return *x,
+                _ => return evaluated_function
+            }
+        },
+        _ => create_error(format!("expected a function, but got {:?}", function))
+    }
+}
+
+fn extend_function_environment(params: Vec<Expression>, args: Vec<Object>, environment: &mut Rc<Environment>) -> Environment{
+
+    let mut inner_environment = Environment::new_enclosed(Rc::clone(environment));
+    
+    for (i, el) in params.into_iter().enumerate() {
+        match el {
+            Expression::Identifier(name, _) => {
+                match inner_environment.set(name, args[i].clone()) {
+                    Ok(_) => (),
+                    Err(x) => panic!("failed to set environment variable: {:?}", x) 
+                }
+            }
+            _ => panic!("failed to parse function")
+        }
+    }
+
+    inner_environment
+}
+
+fn evaluate_expression(expression: Expression, environment: &mut Rc<Environment>) -> Object {
     
     match expression {
 
         Expression::Bool(x) => return Object::Bool(x),
+
+        Expression::Call(func, args) => {
+            let function = evaluate_expression(*func, environment);
+
+            if is_error(&function){
+                return function;
+            }
+
+            let evaluated_args = evaluate_expressions(args, environment);
+            
+            if evaluated_args.len() == 1 && match evaluated_args.first() {
+                Some(x) => is_error(x),
+                None => false
+            }
+            {
+                return evaluated_args.first().unwrap().clone();
+            }
+
+            return apply_function(function, evaluated_args);
+        }
 
         Expression::Function(args, body) => {
             
@@ -114,7 +188,7 @@ fn evaluate_expression(expression: Expression, environment: Rc<Environment>) -> 
                 }
             }
 
-            return Object::Function(args, body, environment);
+            return Object::Function(args, body, Rc::clone(environment));
         },
 
         Expression::Integer(x) => return Object::Integer(x),
@@ -124,7 +198,8 @@ fn evaluate_expression(expression: Expression, environment: Rc<Environment>) -> 
             match value {
                 Some(expr) => evaluate_expression(*expr, environment),
                 None => {
-                    let env_value = environment.get(name.clone());
+                    let mut_env = Rc::make_mut(environment);
+                    let env_value = mut_env.get(&name);
 
                     match env_value {
                         Some(x) => return x.clone(),
@@ -163,8 +238,6 @@ fn evaluate_expression(expression: Expression, environment: Rc<Environment>) -> 
         Expression::If(condition, consequence) => evaluate_if_else_expression(*condition, consequence, None, environment),
         
         Expression::IfElse(condition, consequence, alternative) => evaluate_if_else_expression(*condition, consequence, Some(alternative), environment),
-        
-        _ => create_error(format!("unexpected expression: {:?}", expression))
     }
 }
 
@@ -175,7 +248,7 @@ fn is_error(object: &Object) -> bool {
     }
 }
 
-fn evaluate_block_statement(block: BlockStatement, environment: Rc<Environment>) -> Object {
+fn evaluate_block_statement(block: BlockStatement, environment: &mut Rc<Environment>) -> Object {
     let mut result = Object::Empty;
     
     for s in block.statements{
@@ -191,7 +264,7 @@ fn evaluate_block_statement(block: BlockStatement, environment: Rc<Environment>)
     result
 }
 
-fn evaluate_if_else_expression(condition: Expression, consequence: BlockStatement, alternative: Option<BlockStatement>, environment: Rc<Environment>) -> Object {
+fn evaluate_if_else_expression(condition: Expression, consequence: BlockStatement, alternative: Option<BlockStatement>, environment: &mut Rc<Environment>) -> Object {
     let condition = evaluate_expression(condition, environment);
 
     if is_truthy(condition){
@@ -273,13 +346,13 @@ fn evaluate_prefix_expression(prefix: Prefix, object: Object) -> Object {
 #[cfg(test)]
 #[test]
 fn can_evaluate_integers() {
-    let mut environment = Environment::new();
+    let environment = Environment::new();
     let mut input = Program::new();
     input.statements.push(Statement::new(Variant::Integer, Some(Expression::Integer(5))));
     input.statements.push(Statement::new(Variant::Integer, Some(Expression::Integer(-48))));
     input.statements.push(Statement::new(Variant::Integer, Some(Expression::Integer(232323))));
 
-    let evaluation = evaluate(input, Rc::new(environment));
+    let evaluation = evaluate(input, &mut Rc::new(environment));
 
     let expected = [ 5, -48, 232323 ];
 
@@ -314,11 +387,11 @@ fn can_evaluate_bools() {
         Statement::new(Variant::LeftParentheses, Some(Expression::Infix(Box::new(Expression::Infix(Box::new(Expression::Integer(1)), Infix::GreaterThan, Box::new(Expression::Integer(2)))), Infix::Equals, Box::new(Expression::Bool(false)))))
     ];  
 
-    let mut environment = Environment::new();
+    let environment = Environment::new();
     let mut input = Program::new();
     input.statements = statements;
 
-    let evaluation = evaluate(input, Rc::new(environment));
+    let evaluation = evaluate(input, &mut Rc::new(environment));
 
     let expected = [ false, true, true, false, false, false, true, false, false, true, true, false, false, true ];
 
@@ -343,8 +416,8 @@ fn can_evaluate_bang_prefix() {
     input.statements.push(Statement::new(Variant::Bang, Some(Expression::Prefix(Prefix::Bang, Box::new(Expression::Prefix(Prefix::Bang, Box::new(Expression::Bool(false))))))));
     input.statements.push(Statement::new(Variant::Bang, Some(Expression::Prefix(Prefix::Bang, Box::new(Expression::Prefix(Prefix::Bang, Box::new(Expression::Integer(5))))))));
     
-    let mut environment = Environment::new();
-    let evaluation = evaluate(input, Rc::new(environment));
+    let environment = Environment::new();
+    let evaluation = evaluate(input, &mut Rc::new(environment));
 
     let expected = [ false, true, false, true, false, true ];
 
@@ -367,8 +440,8 @@ fn can_evaluate_minus_prefix() {
     input.statements.push(Statement::new(Variant::Minus, Some(Expression::Prefix(Prefix::Minus, Box::new(Expression::Integer(5))))));
     input.statements.push(Statement::new(Variant::Minus, Some(Expression::Prefix(Prefix::Minus, Box::new(Expression::Integer(10))))));
     
-    let mut environment = Environment::new();
-    let evaluation = evaluate(input, Rc::new(environment));
+    let environment = Environment::new();
+    let evaluation = evaluate(input, &mut Rc::new(environment));
 
     let expected = [ 5, 10, -5, -10 ];
 
@@ -461,8 +534,8 @@ fn can_evaluate_infix_expressions() {
 
     input.statements = statements;
     
-    let mut environment = Environment::new();
-    let evaluation = evaluate(input, Rc::new(environment));
+    let environment = Environment::new();
+    let evaluation = evaluate(input, &mut Rc::new(environment));
 
     let expected = [ 10, 32, 0, 100, 37 ];
 
@@ -591,8 +664,8 @@ fn can_evaluate_if_else_expressions() {
 
     input.statements = statements;
     
-    let mut environment = Environment::new();
-    let evaluation = evaluate(input, Rc::new(environment));
+    let environment = Environment::new();
+    let evaluation = evaluate(input, &mut Rc::new(environment));
 
     let expected = [ 
         Object::Integer(10),
@@ -648,8 +721,8 @@ fn can_evaluate_return_statements() {
 
     input.statements = statements;
     
-    let mut environment = Environment::new();
-    let evaluation = evaluate(input, Rc::new(environment));
+    let environment = Environment::new();
+    let evaluation = evaluate(input, &mut Rc::new(environment));
     
     let expected = [ 
         Object::ReturnValue(Box::new(Object::Integer(10))),
@@ -697,8 +770,8 @@ fn can_generate_error_messages() {
 
     input.statements = statements;
     
-    let mut environment = Environment::new();
-    let evaluation = evaluate(input, Rc::new(environment));
+    let environment = Environment::new();
+    let evaluation = evaluate(input, &mut Rc::new(environment));
     
     let expected = [
         Object::Error("no value associated with identifier \"foobar\"".to_string()), 
@@ -742,10 +815,189 @@ fn can_evaluate_let_statements() {
     
     for (i, el) in programs.into_iter().enumerate() {
         
-        let mut environment = Environment::new();
+        let environment = Environment::new();
         
-        let evaluation = evaluate(el, Rc::new(environment));
+        let evaluation = evaluate(el, &mut Rc::new(environment));
         
         assert_eq!(*evaluation.last().unwrap(), Object::Integer(expected[i]));
+    }
+}
+
+
+#[test]
+fn can_evaluate_functions_and_calls() {
+
+    let programs = vec![
+        Program::new_with_statements(vec![
+            Statement::new(Variant::Let, 
+                Some(Expression::Identifier(
+                    "add_two".to_string(), 
+                    Some(Box::new(Expression::Function(
+                        vec![Expression::Identifier(
+                            "x".to_string(), 
+                            None)], 
+                        BlockStatement::new_with_statements(
+                            Variant::LeftBrace, 
+                            vec![
+                                Statement::new(
+                                    Variant::Identifier, 
+                                    Some(Expression::Infix(
+                                        Box::new(Expression::Identifier(
+                                            "x".to_string(), 
+                                            None)), 
+                                        Infix::Plus, 
+                                        Box::new(Expression::Integer(2))
+                                    ))
+                                )
+                            ]
+                        )
+                    )))
+                ))
+            ),
+            Statement::new(
+                Variant::Identifier, 
+                Some(Expression::Call(
+                    Box::new(Expression::Identifier(
+                        "add_two".to_string(), 
+                        None)), 
+                        vec![Expression::Integer(2)]
+                    ))
+            ),
+        ]),
+        Program::new_with_statements(vec![
+            Statement::new(
+                Variant::Let, 
+                Some(Expression::Identifier(
+                    "multiply".to_string(), 
+                    Some(Box::new(Expression::Function(
+                        vec![
+                            Expression::Identifier(
+                                "x".to_string(), 
+                                None
+                            ), 
+                            Expression::Identifier(
+                                "y".to_string(), 
+                                None
+                            )
+                        ], 
+                        BlockStatement::new_with_statements(
+                            Variant::LeftBrace, 
+                            vec![
+                                Statement::new(
+                                    Variant::Identifier, 
+                                    Some(Expression::Infix(
+                                        Box::new(Expression::Identifier(
+                                            "x".to_string(), 
+                                            None
+                                        )), 
+                                        Infix::Multiply, 
+                                        Box::new(Expression::Identifier(
+                                            "y".to_string(), 
+                                            None
+                                        ))
+                                    ))
+                                )
+                            ]
+                        )
+                    ))
+                    )
+                ))
+            ),
+            Statement::new(
+                Variant::Identifier,
+                Some(Expression::Call(
+                    Box::new(Expression::Identifier(
+                        "multiply".to_string(), 
+                        None
+                    )), 
+                    vec![ 
+                        Expression::Infix(
+                            Box::new(Expression::Integer(50)), 
+                            Infix::Divide, 
+                            Box::new(Expression::Integer(2))
+                        ), 
+                        Expression::Infix(
+                            Box::new(Expression::Integer(1)), 
+                            Infix::Multiply, 
+                            Box::new(Expression::Integer(2))
+                        )
+                    ]
+                ))
+            ),
+        ]),
+        Program::new_with_statements(vec![
+            Statement::new(
+                Variant::Function,
+                Some(Expression::Call(
+                    Box::new(Expression::Function(
+                        vec![
+                            Expression::Identifier(
+                                "x".to_string(), 
+                                None
+                            )
+                        ], 
+                        BlockStatement::new_with_statements(
+                            Variant::LeftBrace, 
+                            vec![ 
+                                Statement::new(
+                                    Variant::Identifier, 
+                                    Some(Expression::Infix(
+                                        Box::new(Expression::Identifier(
+                                            "x".to_string(), 
+                                            None
+                                        )), 
+                                        Infix::Equals, 
+                                        Box::new(Expression::Integer(10))
+                                    ))
+                                )
+                            ])
+                        )), 
+                        vec![
+                            Expression::Integer(5)
+                        ])))
+        ]),   
+        Program::new_with_statements(vec![
+            Statement::new(
+                Variant::Function,
+                Some(Expression::Call(
+                    Box::new(Expression::Function(
+                        vec![
+                            Expression::Identifier(
+                                "x".to_string(), 
+                                None
+                            )
+                        ], 
+                        BlockStatement::new_with_statements(
+                            Variant::LeftBrace, 
+                            vec![ 
+                                Statement::new(
+                                    Variant::Identifier, 
+                                    Some(Expression::Infix(
+                                        Box::new(Expression::Identifier(
+                                            "x".to_string(), 
+                                            None
+                                        )), 
+                                        Infix::Equals, 
+                                        Box::new(Expression::Integer(10))
+                                    ))
+                                )
+                            ])
+                        )), 
+                        vec![
+                            Expression::Integer(10)
+                        ])))
+        ])
+    ];
+    
+
+    let expected = vec![ Object::Integer(4), Object::Integer(50), Object::Bool(false), Object::Bool(true) ];
+    
+    for (i, el) in programs.into_iter().enumerate() {
+        
+        let environment = Environment::new();
+        
+        let evaluation = evaluate(el, &mut Rc::new(environment));
+        
+        assert_eq!(*evaluation.last().unwrap(), expected[i]);
     }
 }
