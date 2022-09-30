@@ -12,8 +12,9 @@ use environment::Environment;
 use std::rc::Rc;
 
 pub fn run(input: String){
+    println!("{:?}", input);
     let environment = Environment::new();
-    let lexer = Lexer::new(input);
+    let lexer = Lexer::new(r#"let message = "some" + " " + "text""#.to_string());
     let mut parser = Parser::new(lexer);
     let program = parser.parse_program();
 
@@ -22,7 +23,7 @@ pub fn run(input: String){
         return;
     }
 
-    println!("{:?}", program);
+    println!("program is {:?}", program);
     let evaluted_program = eval::evaluate(program, &mut Rc::new(environment));
     print_program(&evaluted_program);
 }
@@ -32,7 +33,6 @@ fn print_errors(errors: &Vec<String>){
     for error in errors {
         println!("{}", error);    
     }
-    println!("");
 }
 
 fn print_program(objects: &Vec<Object>) {

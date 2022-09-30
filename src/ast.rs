@@ -53,7 +53,8 @@ pub enum Expression {
     If(Box<Expression>, BlockStatement),
     IfElse(Box<Expression>, BlockStatement, BlockStatement),
     Function(Vec<Expression>, BlockStatement),
-    Call(Box<Expression>, Vec<Expression>)
+    Call(Box<Expression>, Vec<Expression>),
+    String(String)
 }
 
 #[derive(Debug, PartialEq, Clone)]

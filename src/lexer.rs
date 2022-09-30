@@ -23,7 +23,7 @@ impl Lexer{
     }
     
     pub fn next_token(&mut self) -> Token {
-        self.skip_whitespace();
+        self.skip_whitespace_and_string_escape();
 
         if self.current_char == None {
             return Token::new(Variant::EndOfFile);
@@ -116,14 +116,15 @@ impl Lexer{
         return self.input.chars().nth(self.read_position)
     }
 
-    fn skip_whitespace(&mut self) {
+    fn skip_whitespace_and_string_escape(&mut self) {
 
         while self.current_char != None{
             match self.current_char.unwrap() {
                   ' ' 
                 | '\t' 
                 | '\n' 
-                | '\r' => self.read_char(),
+                | '\r'
+                | '\\' => self.read_char(),
                 _ => break,
             }
         }

@@ -11,12 +11,14 @@ pub enum Object {
     Bool(bool),
     Empty,
     ReturnValue(Box<Object>),
+    String(String),
     Error(String)
 }
 
 pub fn inspect(object: &Object) -> String {
     let result = match object {
         Object::Empty => "empty".to_string(),
+        Object::String(x) => x.to_string(),
         Object::Integer(x) => x.to_string(),
         Object::Bool(x) => x.to_string(),
         Object::ReturnValue(x) => inspect(x),
@@ -156,6 +158,8 @@ fn evaluate_expression(expression: Expression, environment: &mut Rc<Environment>
     
     match expression {
 
+        Expression::String(x) => return Object::String(x),
+
         Expression::Bool(x) => return Object::Bool(x),
 
         Expression::Call(func, args) => {
@@ -292,10 +296,27 @@ fn evaluate_infix_expression(left: Object, infix: Infix, right: Object) -> Objec
     match (left, right) {
         (Object::Integer(x), Object::Integer(y)) => return evaluate_infix_integer_expression(x, infix, y),
         (Object::Bool(x), Object::Bool(y)) => return evaluate_infix_bool_expression(x, infix, y),
+        (Object::String(x), Object::String(y)) => return evaluate_infix_string_expression(x, infix, y),
 
         (Object::Bool(x), Object::Integer(y)) => return create_error(format!("unknown operator: {:?} {:?} {:?}", x, infix, y)),
+        (Object::Bool(x), Object::String(y)) => return create_error(format!("unknown operator: {:?} {:?} {:?}", x, infix, y)),
+        
         (Object::Integer(x), Object::Bool(y)) => return create_error(format!("unknown operator: {:?} {:?} {:?}", x, infix, y)), 
+        (Object::Integer(x), Object::String(y)) => return create_error(format!("unknown operator: {:?} {:?} {:?}", x, infix, y)), 
+
+        (Object::String(x), Object::Bool(y)) => return create_error(format!("unknown operator: {:?} {:?} {:?}", x, infix, y)), 
+        (Object::String(x), Object::Integer(y)) => return create_error(format!("unknown operator: {:?} {:?} {:?}", x, infix, y)), 
+
         _ =>  return create_error(format!("invalid infix expression"))
+    }
+}
+
+fn evaluate_infix_string_expression(left: String, infix: Infix, right: String) -> Object {
+    match infix {
+        Infix::Plus => Object::String(format!("{}{}", left, right)),
+        Infix::Equals => Object::Bool(left == right),
+        Infix::NotEqual => Object::Bool(left != right),
+        _ => panic!("unexpected string expression")
     }
 }
 
@@ -998,5 +1019,42 @@ fn can_evaluate_functions_and_calls() {
         let evaluation = evaluate(el, &mut Rc::new(environment));
         
         assert_eq!(*evaluation.last().unwrap(), expected[i]);
+    }
+}
+
+#[test]
+fn can_evaluate_string_statements() {
+
+    let programs = vec![
+        Program::new_with_statements(vec![
+            Statement::new(Variant::Let, Some(Expression::Identifier("message".to_string(), 
+            Some(Box::new(Expression::Infix(
+                 Box::new(Expression::Infix(
+                      Box::new(Expression::String("some".to_string())), 
+                      Infix::Plus, 
+                      Box::new(Expression::String(" ".to_string())))), 
+                  Infix::Plus, 
+                  Box::new(Expression::String("text".to_string()))))))))
+        ]),
+        Program::new_with_statements(vec![
+            Statement::new(Variant::Let, Some(Expression::Identifier("another_message".to_string(), Some(Box::new(Expression::String("more letters".to_string())))))),
+        ]),
+        Program::new_with_statements(vec![
+            Statement::new(Variant::Let, Some(Expression::Identifier("expr".to_string(), Some(Box::new(Expression::Infix(Box::new(Expression::String("me".to_string())), Infix::Equals, Box::new(Expression::String("you".to_string())))))))),
+        ]),
+        Program::new_with_statements(vec![
+            Statement::new(Variant::Let, Some(Expression::Identifier("expr".to_string(), Some(Box::new(Expression::Infix(Box::new(Expression::String("you".to_string())), Infix::Equals, Box::new(Expression::String("you".to_string())))))))),
+        ])
+    ];
+
+    let expected = vec![ Object::String("some text".to_string()), Object::String("more letters".to_string()), Object::Bool(false), Object::Bool(true) ];
+    
+    for (i, el) in programs.into_iter().enumerate() {
+        
+        let environment = Environment::new();
+        
+        let evaluation = evaluate(el, &mut Rc::new(environment));
+        
+        assert_eq!(*evaluation.last().unwrap(), expected[i].clone());
     }
 }

@@ -48,7 +48,7 @@ impl Parser {
 
         parser.next_token();
         parser.next_token();
-
+        println!("{:?}", parser.current_token.variant);
         parser
     }
 
@@ -112,7 +112,6 @@ impl Parser {
     }
 
     fn parse_statement(&mut self) -> Option<Statement> {
-
         let result = match self.current_token.variant {
             Variant::Let => self.parse_let_statement(),
             Variant::Return => self.parse_return_statement(),
@@ -197,6 +196,7 @@ impl Parser {
 
     fn parse_expression_statement(&mut self) -> Option<Statement> {
         let current_token = self.current_token.variant.clone();
+
         let expression = self.parse_expression(Precedence::Lowest);
         
         let statement = Statement::new(current_token, Some(expression));
@@ -354,6 +354,20 @@ impl Parser {
         parameters
     }
 
+    fn parse_string(&mut self) -> Option<Expression> {
+        println!("got a string");
+        let value = match &self.current_token.value { 
+            Some(x) => x.clone(),
+            _ => {
+                let message = format!("expected string but got {:?}", self.current_token);
+                self.errors.push(message);
+                return None;
+            }
+        };
+
+        Some(Expression::String(value))
+    }
+
     fn parse_expression(&mut self, precedence: Precedence) -> Expression {
         
         let mut left_expression = match &self.current_token.variant {
@@ -364,6 +378,7 @@ impl Parser {
             Variant::LeftParentheses => self.parse_group().unwrap(),
             Variant::If => self.parse_if().unwrap(),
             Variant::Function => self.parse_function().unwrap(),
+            Variant::String => self.parse_string().unwrap(),
             _ => panic!("TODO: Implement more operators??: {:?}", self.current_token.variant),
         };
 
@@ -888,5 +903,54 @@ fn call_expression() {
     let expression = statement.expression.unwrap();
 
     assert_eq!(statement.variant, Variant::Identifier);
+    assert_eq!(expression, expected);
+}
+
+#[test]
+fn string_expression() {
+    let input = r#"let message = "some text""#.to_string();
+
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+
+    let program = parser.parse_program();
+
+    let expected = Expression::Identifier("message".to_string(), Some(Box::new(Expression::String("some text".to_string()))));
+
+    assert_eq!(parser.errors.len(), 0);
+    assert_eq!(program.statements.len(), 1);
+    
+    let statement = program.statements[0].clone();
+    let expression = statement.expression.unwrap();
+
+    assert_eq!(statement.variant, Variant::Let);
+    assert_eq!(expression, expected);
+}
+
+#[test]
+fn string_concatenation() {
+    let input = r#"let message = "some" + " " + "text""#.to_string();
+
+    let lexer = Lexer::new(input);
+    let mut parser = Parser::new(lexer);
+
+    let program = parser.parse_program();
+
+    let expected = Expression::Identifier("message".to_string(), 
+                                                      Some(Box::new(Expression::Infix(
+                                                           Box::new(Expression::Infix(
+                                                                Box::new(Expression::String("some".to_string())), 
+                                                                Infix::Plus, 
+                                                                Box::new(Expression::String(" ".to_string())))), 
+                                                            Infix::Plus, 
+                                                            Box::new(Expression::String("text".to_string()))))));
+
+    assert_eq!(parser.errors.len(), 0);
+    assert_eq!(program.statements.len(), 1);
+    
+    let statement = program.statements[0].clone();
+    let expression = statement.expression.unwrap();
+
+    assert_eq!(statement.variant, Variant::Let);
     assert_eq!(expression, expected);
 }
